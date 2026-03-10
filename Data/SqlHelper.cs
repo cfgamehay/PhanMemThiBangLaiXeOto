@@ -10,7 +10,17 @@ namespace ApiThiBangLaiXeOto.Data
 
         public SqlHelper(IConfiguration configuration)
         {
-            _connectionString = configuration.GetConnectionString("DefaultConnection")!;
+            // Prefer the built-in helper which looks in the ConnectionStrings section
+            _connectionString = configuration.GetConnectionString("DefaultConnection")
+                        ?? configuration["ConnectionStrings:DefaultConnection"]
+                        ?? configuration.GetSection("ConnectionStrings")["DefaultConnection"]
+                        ?? "";
+
+            // Fail fast to help detect configuration problems during startup
+            if (string.IsNullOrEmpty(_connectionString))
+            {
+                throw new InvalidOperationException("Connection string 'DefaultConnection' not found. Ensure appsettings.json is loaded and the key 'ConnectionStrings:DefaultConnection' exists.");
+            }
         }
 
         //Dùng để thực thi các truy vấn trả về nhiều bản ghi bằng query hoặc stored procedure -> List<T> -> 200 OK

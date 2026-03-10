@@ -46,6 +46,14 @@ public class Startup
                 ClockSkew = TimeSpan.Zero
             };
         });
+
+        services.AddCors(options =>
+        {
+            options.AddPolicy("AllowReactApp",
+                policy => policy.WithOrigins("http://localhost:5173") // Port của Vite
+                                .AllowAnyMethod()
+                                .AllowAnyHeader());
+        });
     }
 
     // This method gets called by the runtime. Use this method to configure the HTTP request pipeline
@@ -56,11 +64,11 @@ public class Startup
             app.UseDeveloperExceptionPage();
         }
 
-
-
         app.UseHttpsRedirection();
 
         app.UseRouting();
+        
+        app.UseCors("AllowReactApp");
 
         app.UseAuthentication();
         app.UseAuthorization();
