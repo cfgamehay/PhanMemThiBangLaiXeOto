@@ -18,27 +18,25 @@ namespace ApiThiBangLaiXeOto.Controllers
             _sql = sql;
         }
         [HttpGet]
-        public async Task<IActionResult> GetQuestions(int? chapter)
+        public async Task<IActionResult> GetQuestions(int? chapter, bool? isCritical)
         {
             var whereClauses = new List<String>();
             var parameters = new List<SqlParameter>();
-            //không hiện câu bị xóa (enable = 0)
             if (true)
             {
                 whereClauses.Add("q.IsEnable <> 0 ");
             }
-
-            if (chapter.HasValue)
+            //Chỉ filter 1 trong 2
+            if (isCritical.HasValue)
+            {
+                whereClauses.Add("q.IsCritical = @isCritical");
+                parameters.Add(new SqlParameter("@isCritical", SqlDbType.Bit) { Value = isCritical.Value });
+            }
+            else if (chapter.HasValue)
             {
                 whereClauses.Add("qc.CategoryId = @chapter");
                 parameters.Add(new SqlParameter("@chapter", SqlDbType.Int) { Value = chapter.Value });
             }
-
-            //if (!string.IsNullOrWhiteSpace(licence))
-            //{
-            //    whereClauses.Add("(q.Content LIKE @licence OR q.Explain LIKE @licence)");
-            //    parameters.Add(new SqlParameter("@licence", SqlDbType.NVarChar) { Value = $"%{licence.Trim()}%" });
-            //}
 
             var whereSql = whereClauses.Count > 0
                 ? "WHERE " + string.Join(" AND ", whereClauses)
@@ -65,18 +63,23 @@ namespace ApiThiBangLaiXeOto.Controllers
             var rawList = await _sql.ExecuteQueryAsync(query, QuestionMapper.ToRawQuestionListDto, parameters.Count > 0 ? parameters.ToArray() : null);
 
             var finalList = rawList
-                .GroupBy(q => new { q.QuestionId, q.QuestionContent, q.Explanation, q.ImageUrl })
-                .Select(g => new QuestionDto
+                .GroupBy(q => q.QuestionId)
+                .Select(g =>
                 {
-                    QuestionContent = g.Key.QuestionContent,
-                    Explanation = g.Key.Explanation,
-                    ImageUrl = g.Key.ImageUrl,
-                    Categories = g.Select(q => q.CategoryId).Distinct().ToList(),
-                    Answers = g.Select(a => new AnswerDto
+                    var first = g.First();
+                    return new QuestionDto
                     {
-                        AnswerContent = a.AnswerContent,
-                        IsCorrect = a.IsCorrect
-                    }).ToList()
+                        Id = g.Key,
+                        QuestionContent = first.QuestionContent,
+                        Explanation = first.Explanation,
+                        ImageUrl = first.ImageUrl,
+                        Categories = g.Select(x => x.CategoryId).Distinct().ToList(),
+                        Answers = g.GroupBy(a => a.AnswerId).Select(ga => new AnswerDto
+                        {
+                            AnswerContent = ga.First().AnswerContent,
+                            IsCorrect = ga.First().IsCorrect
+                        }).ToList()
+                    };
                 }).ToList();
 
             var QuestionRespone = new
@@ -85,12 +88,33 @@ namespace ApiThiBangLaiXeOto.Controllers
                 TotalQuestion = finalList.Count(),
                 Questions = finalList
             };
-
-
-
-
             return Ok(QuestionRespone);
         }
+
+        [HttpGet("exam")]
+        public async Task<IActionResult> GetExam([FromQuery] string licenceCode = "B")
+        {
+            try
+            {
+                var parameters = new[]
+{
+                new SqlParameter("@LicenceCode", SqlDbType.NVarChar) { Value = licenceCode }
+            };
+
+                var rawList = await _sql.ExecuteQueryAsync(
+                "GenerateExam",
+                QuestionMapper.ToRawQuestionListDto,
+                parameters,
+                CommandType.StoredProcedure
+                );
+                return Ok(rawList);
+            }
+            catch (Exception ex) { 
+                return BadRequest(ex.Message);
+            }
+
+        }
+
 
         [HttpPost]
         //Get List of QuestionCreateDTO from json response
