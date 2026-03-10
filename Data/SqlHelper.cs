@@ -1,4 +1,6 @@
-﻿using Microsoft.Data.SqlClient;
+﻿using ApiThiBangLaiXeOto.DTOs;
+using ApiThiBangLaiXeOto.Helper;
+using Microsoft.Data.SqlClient;
 using System.Data;
 namespace ApiThiBangLaiXeOto.Data
 {
@@ -139,5 +141,117 @@ namespace ApiThiBangLaiXeOto.Data
                 return await command.ExecuteNonQueryAsync();
             }
         }
+        #region Hoàng Duy
+        //User
+        public async Task<string> GetHashPasswordAsync(string Username)
+        {
+            string password = "";
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+
+                using (var command = new SqlCommand("sp_GetHashPassword", connection))
+                {
+
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.Add(new SqlParameter("@Username", SqlDbType.NVarChar) { Value = Username });
+
+                    using (var reader = await command.ExecuteReaderAsync())
+                    {
+                        if (await reader.ReadAsync())
+                        {
+                            password = reader["password"]?.ToString() ?? "";
+                        }
+                    }
+                }
+            }
+            return password;
+        }
+        public async Task<bool> CheckUserExistsAsync(string username)
+        {
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            using var command = new SqlCommand("sp_CheckUserExists", connection);
+            command.CommandType = CommandType.StoredProcedure;
+            command.Parameters.Add("@Username", SqlDbType.NVarChar, 100).Value = username;
+
+            var result = await command.ExecuteScalarAsync();
+
+            return result != null && Convert.ToBoolean(result);
+        }
+
+        public async Task<UserDTO?> GetUserAsync(int? userId = null, string? UserName = null)
+        {
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+
+                using (var cmd = new SqlCommand("sp_GetUser", connection))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    if (userId != null)
+                        cmd.Parameters.Add(new SqlParameter("@UserID", SqlDbType.Int)).Value = userId;
+                    if (UserName != null)
+                        cmd.Parameters.Add(new SqlParameter("@UserName", SqlDbType.NVarChar)).Value = UserName;
+                    using (var reader = await cmd.ExecuteReaderAsync())
+                    {
+                        if (await reader.ReadAsync())
+                        {
+                            return new UserDTO
+                            {
+                                Id = Convert.ToInt32(reader["id"]),
+                                UserName = reader["username"]?.ToString() ?? "",
+                                CreatedAt = Convert.ToDateTime(reader["create_at"]),
+                                Role = Convert.ToInt32(reader["role"]),
+                                Status = Convert.ToBoolean(reader["status"])
+                            };
+                        }
+                    }
+                    ;
+                }
+                return null;
+            }
+        }
+        public async Task InsertUserAsync(string username, string password)
+        {
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+
+                using (var cmd = new SqlCommand("sp_InsertUser", connection))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+
+                    cmd.Parameters.Add(new SqlParameter("@Username", SqlDbType.NVarChar, 100) { Value = username });
+                    cmd.Parameters.Add(new SqlParameter("@PasswordHash", SqlDbType.NVarChar, 255) { Value = password });
+
+                    await cmd.ExecuteNonQueryAsync();
+                }
+            }
+        }
+        public async Task UpdatePassword(int UserID, string Password)
+        {
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+                    var newPassword = PasswordHasher.HashPassword(Password);
+                    using (var cmd = new SqlCommand("sp_UpdatePassword", connection))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.Parameters.Add(new SqlParameter("@UserID", SqlDbType.Int) { Value = UserID });
+                        cmd.Parameters.Add(new SqlParameter("@NewPassword", SqlDbType.NVarChar) { Value = newPassword });
+
+                        await cmd.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+        #endregion
     }
 }
