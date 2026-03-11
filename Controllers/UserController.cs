@@ -1,4 +1,5 @@
 ﻿using ApiThiBangLaiXeOto.Data;
+using ApiThiBangLaiXeOto.Helper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -11,8 +12,8 @@ namespace ApiThiBangLaiXeOto.Controllers
     public class UserController : Controller
     {
         private readonly SqlHelper _sql;
-        public UserController(SqlHelper sql) 
-        { 
+        public UserController(SqlHelper sql)
+        {
             _sql = sql;
         }
         [HttpPatch("ChangePassword")]
@@ -31,17 +32,20 @@ namespace ApiThiBangLaiXeOto.Controllers
         [HttpGet("Profile")]
         public async Task<IActionResult> Profile()
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
-            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            try
             {
-                var user = await _sql.GetUserAsync(userId, null);
                 return Ok(new
                 {
                     success = true,
-                    data = user
+                    data = authHelper.GetUser(User, _sql)
                 });
             }
-            return BadRequest(new { message = "Không tải được thông tin" });
+            catch
+            (Exception ex)
+            {
+                return BadRequest(new { message = "Không tải được thông tin" });
+            }
         }
     }
 }
+
