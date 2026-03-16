@@ -1,6 +1,8 @@
 ﻿using ApiThiBangLaiXeOto.Data;
 using ApiThiBangLaiXeOto.DTOs;
+using ApiThiBangLaiXeOto.Helper;
 using ApiThiBangLaiXeOto.Mapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using System.Data;
@@ -9,7 +11,7 @@ using System.Threading.Tasks;
 namespace ApiThiBangLaiXeOto.Controllers
 {
     [ApiController]
-    [Route("api/questions")]
+    [Route("api/CauHoi")]
     public class QuestionsController : Controller
     {
         private readonly SqlHelper _sql;
@@ -18,30 +20,113 @@ namespace ApiThiBangLaiXeOto.Controllers
             _sql = sql;
         }
         [HttpGet]
-        public async Task<IActionResult> GetQuestions(int? chapter, bool? isCritical)
+        public async Task<IActionResult> GetQuestions([FromQuery] int? Chuong, bool? CauDiemLiet, bool? BienBao, int? SoLuong = 60, int? Trang = 1)
         {
-            var whereClauses = new List<String>();
+            int pageSize = Math.Max(1, SoLuong ?? 60);
+            int page = Math.Max(1, Trang ?? 1);
+            int offset = (page - 1) * pageSize;
+
+            var whereClauses = new List<string>();
             var parameters = new List<SqlParameter>();
-            if (true)
-            {
-                whereClauses.Add("q.IsEnable <> 0 ");
-            }
-            //Chỉ filter 1 trong 2
-            if (isCritical.HasValue)
+
+            // Only enabled questions
+            whereClauses.Add("q.IsEnable <> 0");
+
+            if (CauDiemLiet.HasValue)
             {
                 whereClauses.Add("q.IsCritical = @isCritical");
-                parameters.Add(new SqlParameter("@isCritical", SqlDbType.Bit) { Value = isCritical.Value });
+                parameters.Add(new SqlParameter("@isCritical", SqlDbType.Bit) { Value = CauDiemLiet.Value });
             }
-            else if (chapter.HasValue)
+            else if (Chuong.HasValue)
             {
                 whereClauses.Add("qc.CategoryId = @chapter");
-                parameters.Add(new SqlParameter("@chapter", SqlDbType.Int) { Value = chapter.Value });
+                parameters.Add(new SqlParameter("@chapter", SqlDbType.Int) { Value = Chuong.Value });
+            }
+            else if (BienBao.HasValue && BienBao.Value == true)
+            {
+                whereClauses.Add("q.ImageLink <> ''");
             }
 
             var whereSql = whereClauses.Count > 0
                 ? "WHERE " + string.Join(" AND ", whereClauses)
                 : string.Empty;
+
+            // Total questions (distinct question ids) for client paging UI
+            int totalQuestions;
+            using (var conn = new SqlConnection(_sql._connectionString))
+            {
+                await conn.OpenAsync();
+                using (var countCmd = conn.CreateCommand())
+                {
+                    countCmd.CommandText = $@"
+                        SELECT COUNT(DISTINCT q.Id)
+                        FROM question q
+                        LEFT JOIN QuestionCategory qc ON qc.QuestionId = q.Id
+                        {whereSql};
+                    ";
+
+                    foreach (var p in parameters)
+                    {
+                        countCmd.Parameters.Add(new SqlParameter(p.ParameterName, p.SqlDbType) { Value = p.Value ?? DBNull.Value });
+                    }
+
+                    var countResult = await countCmd.ExecuteScalarAsync();
+                    totalQuestions = (countResult == DBNull.Value || countResult == null) ? 0 : Convert.ToInt32(countResult);
+                }
+            }
+
+            // Page at question level: select paged question ids then fetch their answers
             string query = $@"
+                WITH PagedQuestions AS (
+                    SELECT q.Id
+                    FROM question q
+                    LEFT JOIN QuestionCategory qc ON qc.QuestionId = q.Id
+                    {whereSql}
+                    GROUP BY q.Id
+                    ORDER BY q.Id
+                    OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
+                )
+                SELECT
+                    q.Id           AS QuestionId,
+                    q.Content      AS QuestionContent,
+                    q.Explain      AS Explanation,
+                    q.ImageLink    AS ImageUrl,
+                    qc.CategoryId  AS CategoryId,
+                    a.Id           AS AnswerId,
+                    a.Content      AS AnswerContent,
+                    a.IsCorrect    AS IsCorrect,
+                    q.IsCritical   AS IsCritical
+                FROM question AS q
+                JOIN answer a ON a.QuestionId = q.Id
+                LEFT JOIN QuestionCategory qc ON qc.QuestionId = q.Id
+                WHERE q.Id IN (SELECT Id FROM PagedQuestions)
+                ORDER BY q.Id, a.Id;
+            ";
+
+            // build parameters for the main query (clone original ones plus offset/pageSize)
+            var mainParams = parameters.Select(p => new SqlParameter(p.ParameterName, p.SqlDbType) { Value = p.Value ?? DBNull.Value }).ToList();
+            mainParams.Add(new SqlParameter("@offset", SqlDbType.Int) { Value = offset });
+            mainParams.Add(new SqlParameter("@pageSize", SqlDbType.Int) { Value = pageSize });
+
+            var rawList = await _sql.ExecuteQueryAsync(query, QuestionMapper.ToRawQuestionListDto, mainParams.ToArray());
+
+            var finalList = MergeQuestionList(rawList);
+
+            var QuestionRespone = new
+            {
+                Page = page,
+                PageSize = pageSize,
+                TotalPages = (totalQuestions + pageSize - 1) / pageSize,
+                QuestionCount = totalQuestions,
+                Questions = finalList
+            };
+            return Ok(QuestionRespone);
+        }
+
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetQuestionById(int id)
+        {
+            var query = @"
                 SELECT
                     q.Id           AS QuestionId,
                     q.Content     AS QuestionContent,
@@ -50,73 +135,94 @@ namespace ApiThiBangLaiXeOto.Controllers
                     qc.CategoryId  AS CategoryId,
                     a.Id           AS AnswerId,
                     a.Content     AS AnswerContent,
-                    a.IsCorrect    AS IsCorrect
+                    a.IsCorrect    AS IsCorrect,
+                    q.IsCritical   AS IsCritical
                 FROM question AS q
                 JOIN answer a 
                     ON a.QuestionId = q.id
                 LEFT JOIN QuestionCategory qc 
                     ON qc.QuestionId = q.id
-                {whereSql}
-                ORDER BY q.id, a.id;
+                WHERE q.Id = @id;
             ";
-
-            var rawList = await _sql.ExecuteQueryAsync(query, QuestionMapper.ToRawQuestionListDto, parameters.Count > 0 ? parameters.ToArray() : null);
-
-            var finalList = rawList
-                .GroupBy(q => q.QuestionId)
-                .Select(g =>
-                {
-                    var first = g.First();
-                    return new QuestionDto
-                    {
-                        Id = g.Key,
-                        QuestionContent = first.QuestionContent,
-                        Explanation = first.Explanation,
-                        ImageUrl = first.ImageUrl,
-                        Categories = g.Select(x => x.CategoryId).Distinct().ToList(),
-                        Answers = g.GroupBy(a => a.AnswerId).Select(ga => new AnswerDto
-                        {
-                            AnswerContent = ga.First().AnswerContent,
-                            IsCorrect = ga.First().IsCorrect
-                        }).ToList()
-                    };
-                }).ToList();
-
-            var QuestionRespone = new
+            var parameters = new[]
             {
-                Chapter = chapter.HasValue ? chapter : -1,
-                TotalQuestion = finalList.Count(),
-                Questions = finalList
+                new SqlParameter("@id", SqlDbType.Int){ Value = id}
             };
-            return Ok(QuestionRespone);
+            var rawList = await _sql.ExecuteQueryAsync(query, QuestionMapper.ToRawQuestionListDto, parameters);
+            var finalList = MergeQuestionList(rawList);
+            if (finalList.Count == 0)
+                return NotFound($"Không tìm thấy câu hỏi với id {id}");
+            return Ok(finalList.First());
         }
 
-        [HttpGet("exam")]
-        public async Task<IActionResult> GetExam([FromQuery] string licenceCode = "B")
+        [HttpGet("CauTruc")]
+        public async Task<IActionResult> GetStructureExam([FromQuery] string BangLai = "B")
         {
+            var query = "GenerateExam";
             try
             {
                 var parameters = new[]
 {
-                new SqlParameter("@LicenceCode", SqlDbType.NVarChar) { Value = licenceCode }
+                new SqlParameter("@LicenceCode", SqlDbType.NVarChar) { Value = BangLai }
             };
 
                 var rawList = await _sql.ExecuteQueryAsync(
-                "GenerateExam",
+                query,
                 QuestionMapper.ToRawQuestionListDto,
                 parameters,
                 CommandType.StoredProcedure
                 );
-                return Ok(rawList);
+
+                var finalList = MergeQuestionList(rawList);
+
+                var QuestionRespone = new
+                {
+                    LicenceCode = BangLai,
+                    QuestionCount = finalList.Count(),
+                    Questions = finalList
+                };
+                return Ok(QuestionRespone);
             }
-            catch (Exception ex) { 
+            catch (Exception ex) {
                 return BadRequest(ex.Message);
             }
 
         }
 
+        [HttpGet("NgauNhien")]
+        public async Task<IActionResult> GetRandomExam([FromQuery] string BangLai = "B")
+        {
+            var query = "GenerateRandomExam";
 
-        [HttpPost]
+            try
+            {
+                var parameters = new[]
+{
+                new SqlParameter("@LicenceCode", SqlDbType.NVarChar) { Value = BangLai }
+            };
+
+                var rawList = await _sql.ExecuteQueryAsync(
+                query,
+                QuestionMapper.ToRawQuestionListDto,
+                parameters,
+                CommandType.StoredProcedure
+                );
+
+                var finalList = MergeQuestionList(rawList);
+
+                var QuestionRespone = new
+                {
+                    QuestionCount = finalList.Count(),
+                    Questions = finalList
+                };
+                return Ok(QuestionRespone);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+[HttpPost]
         //Get List of QuestionCreateDTO from json response
         public async Task<IActionResult> Create([FromBody] List<QuestionCreateDTO> dtos)
         {
@@ -233,6 +339,32 @@ namespace ApiThiBangLaiXeOto.Controllers
                 };
                 await _sql.ExecuteNonQueryAsync(query, conn, trans, parameters);
             }
+        }
+
+        private List<QuestionDto> MergeQuestionList(List<QuestionRawDto> rawList)
+        {
+            var finalList = rawList
+                .GroupBy(q => q.QuestionId)
+                .Select(g =>
+                {
+                    var first = g.First();
+                    return new QuestionDto
+                    {
+                        Id = g.Key,
+                        QuestionContent = first.QuestionContent,
+                        Explanation = first.Explanation,
+                        ImageUrl = first.ImageUrl,
+                        Categories = g.Select(x => x.CategoryId).Distinct().ToList(),
+                        IsCritical = first.IsCritical,
+                        Answers = g.GroupBy(a => a.AnswerId).Select(ga => new AnswerDto
+                        {
+                            Id = ga.Key,
+                            AnswerContent = ga.First().AnswerContent,
+                            IsCorrect = ga.First().IsCorrect
+                        }).ToList()
+                    };
+                }).ToList();
+            return finalList;
         }
     }
 }

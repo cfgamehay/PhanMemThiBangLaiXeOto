@@ -37,7 +37,7 @@ namespace ApiThiBangLaiXeOto.Controllers
                 return Ok(new
                 {
                     success = true,
-                    data = authHelper.GetUser(User, _sql)
+                    data = authHelper.GetUser(User, _sql).Result
                 });
             }
             catch

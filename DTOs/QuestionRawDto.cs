@@ -9,6 +9,7 @@
         public int AnswerId { get; set; }
         public string AnswerContent { get; set; } = null!;
         public bool IsCorrect { get; set; }
+        public bool IsCritical { get; set; }
         public int CategoryId { get; set; }
 
     }

@@ -16,7 +16,8 @@ namespace ApiThiBangLaiXeOto.Mapper
                 AnswerId = reader.GetInt32(reader.GetOrdinal("AnswerId")),
                 AnswerContent = reader.GetString(reader.GetOrdinal("AnswerContent")),
                 IsCorrect = reader.GetBoolean(reader.GetOrdinal("IsCorrect")),
-                CategoryId = reader.GetInt32(reader.GetOrdinal("CategoryId"))
+                CategoryId = reader.GetInt32(reader.GetOrdinal("CategoryId")),
+                IsCritical = reader.GetBoolean(reader.GetOrdinal("IsCritical"))
             
             };
         }
