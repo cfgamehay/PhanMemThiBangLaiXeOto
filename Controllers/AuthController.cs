@@ -72,19 +72,23 @@ namespace ApiThiBangLaiXeOto.Controllers
         {
             return Ok(new { message = "Logout successful. Remove token on client side." });
         }
-        private string GenerateJwtToken( int iduser, int userRole)
+        private string GenerateJwtToken(int iduser, int userRole)
         {
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key_Main"]!));
+            var key = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(_config["Jwt:Key_Main"]!)
+            );
+
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var claims = new[]
             {
-                new Claim(ClaimTypes.NameIdentifier, iduser.ToString()),
-                new Claim(ClaimTypes.Role, userRole.ToString()),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-                new Claim(JwtRegisteredClaimNames.Iat, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64)
-
-            };
+        new Claim(ClaimTypes.NameIdentifier, iduser.ToString()),
+        new Claim(ClaimTypes.Role, userRole.ToString()),
+        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+        new Claim(JwtRegisteredClaimNames.Iat,
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
+            ClaimValueTypes.Integer64)
+    };
 
             var token = new JwtSecurityToken(
                 issuer: _config["Jwt:Issuer"],
