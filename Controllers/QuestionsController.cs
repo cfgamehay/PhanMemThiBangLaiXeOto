@@ -27,7 +27,8 @@ namespace ApiThiBangLaiXeOto.Controllers
             int offset = (page - 1) * pageSize;
 
             var whereClauses = new List<string>();
-            var parameters = new List<SqlParameter>();
+            var questionFilterParam = new List<SqlParameter>();
+            var questionCountParam = new List<SqlParameter>();
 
             // Only enabled questions
             whereClauses.Add("q.IsEnable <> 0");
@@ -35,12 +36,14 @@ namespace ApiThiBangLaiXeOto.Controllers
             if (CauDiemLiet.HasValue)
             {
                 whereClauses.Add("q.IsCritical = @isCritical");
-                parameters.Add(new SqlParameter("@isCritical", SqlDbType.Bit) { Value = CauDiemLiet.Value });
+                questionFilterParam.Add(new SqlParameter("@isCritical", SqlDbType.Bit) { Value = CauDiemLiet.Value });
+                questionCountParam.Add(new SqlParameter("@isCritical", SqlDbType.Bit) { Value = CauDiemLiet.Value });
             }
             else if (Chuong.HasValue)
             {
                 whereClauses.Add("qc.CategoryId = @chapter");
-                parameters.Add(new SqlParameter("@chapter", SqlDbType.Int) { Value = Chuong.Value });
+                questionFilterParam.Add(new SqlParameter("@chapter", SqlDbType.Int) { Value = Chuong.Value });
+                questionCountParam.Add(new SqlParameter("@chapter", SqlDbType.Int) { Value = Chuong.Value });   
             }
             else if (BienBao.HasValue && BienBao.Value == true)
             {
@@ -51,32 +54,18 @@ namespace ApiThiBangLaiXeOto.Controllers
                 ? "WHERE " + string.Join(" AND ", whereClauses)
                 : string.Empty;
 
-            // Total questions (distinct question ids) for client paging UI
-            int totalQuestions;
-            using (var conn = new SqlConnection(_sql._connectionString))
-            {
-                await conn.OpenAsync();
-                using (var countCmd = conn.CreateCommand())
-                {
-                    countCmd.CommandText = $@"
-                        SELECT COUNT(DISTINCT q.Id)
-                        FROM question q
-                        LEFT JOIN QuestionCategory qc ON qc.QuestionId = q.Id
-                        {whereSql};
-                    ";
+            string queryCount = $@"
+                SELECT COUNT(DISTINCT q.Id)
+                FROM question q
+                LEFT JOIN QuestionCategory qc ON qc.QuestionId = q.Id
+                {whereSql}
+            ";
 
-                    foreach (var p in parameters)
-                    {
-                        countCmd.Parameters.Add(new SqlParameter(p.ParameterName, p.SqlDbType) { Value = p.Value ?? DBNull.Value });
-                    }
+            int totalQuestion = await _sql.ExecuteScalarAsync(queryCount, questionCountParam.ToArray());
 
-                    var countResult = await countCmd.ExecuteScalarAsync();
-                    totalQuestions = (countResult == DBNull.Value || countResult == null) ? 0 : Convert.ToInt32(countResult);
-                }
-            }
-
-            // Page at question level: select paged question ids then fetch their answers
-            string query = $@"
+            questionFilterParam.Add(new SqlParameter("@offset", SqlDbType.Int) { Value = offset });
+            questionFilterParam.Add(new SqlParameter("@pageSize", SqlDbType.Int) { Value = pageSize });
+            string queryGetQuestions = $@"
                 WITH PagedQuestions AS (
                     SELECT q.Id
                     FROM question q
@@ -97,29 +86,26 @@ namespace ApiThiBangLaiXeOto.Controllers
                     a.IsCorrect    AS IsCorrect,
                     q.IsCritical   AS IsCritical
                 FROM question AS q
-                JOIN answer a ON a.QuestionId = q.Id
+                INNER JOIN answer a ON a.QuestionId = q.Id
                 LEFT JOIN QuestionCategory qc ON qc.QuestionId = q.Id
                 WHERE q.Id IN (SELECT Id FROM PagedQuestions)
                 ORDER BY q.Id, a.Id;
             ";
+            // Count total questions for pagination
 
-            // build parameters for the main query (clone original ones plus offset/pageSize)
-            var mainParams = parameters.Select(p => new SqlParameter(p.ParameterName, p.SqlDbType) { Value = p.Value ?? DBNull.Value }).ToList();
-            mainParams.Add(new SqlParameter("@offset", SqlDbType.Int) { Value = offset });
-            mainParams.Add(new SqlParameter("@pageSize", SqlDbType.Int) { Value = pageSize });
-
-            var rawList = await _sql.ExecuteQueryAsync(query, QuestionMapper.ToRawQuestionListDto, mainParams.ToArray());
-
+            var rawList = await _sql.ExecuteQueryAsync(queryGetQuestions, QuestionMapper.ToRawQuestionListDto, questionFilterParam.ToArray());
             var finalList = MergeQuestionList(rawList);
 
+            //Custom response for pagination
             var QuestionRespone = new
             {
                 Page = page,
                 PageSize = pageSize,
-                TotalPages = (totalQuestions + pageSize - 1) / pageSize,
-                QuestionCount = totalQuestions,
+                TotalPages = (int)Math.Ceiling((double)totalQuestion / pageSize),
+                QuestionCount = finalList.Count(),
                 Questions = finalList
             };
+
             return Ok(QuestionRespone);
         }
 
@@ -183,7 +169,8 @@ namespace ApiThiBangLaiXeOto.Controllers
                 };
                 return Ok(QuestionRespone);
             }
-            catch (Exception ex) {
+            catch (Exception ex)
+            {
                 return BadRequest(ex.Message);
             }
 
@@ -222,7 +209,7 @@ namespace ApiThiBangLaiXeOto.Controllers
                 return BadRequest(ex.Message);
             }
         }
-[HttpPost]
+        [HttpPost]
         //Get List of QuestionCreateDTO from json response
         public async Task<IActionResult> Create([FromBody] List<QuestionCreateDTO> dtos)
         {
