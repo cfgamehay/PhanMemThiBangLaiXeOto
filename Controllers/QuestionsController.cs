@@ -39,13 +39,13 @@ namespace ApiThiBangLaiXeOto.Controllers
                 questionFilterParam.Add(new SqlParameter("@isCritical", SqlDbType.Bit) { Value = CauDiemLiet.Value });
                 questionCountParam.Add(new SqlParameter("@isCritical", SqlDbType.Bit) { Value = CauDiemLiet.Value });
             }
-            else if (Chuong.HasValue)
+            if (Chuong.HasValue)
             {
                 whereClauses.Add("qc.CategoryId = @chapter");
                 questionFilterParam.Add(new SqlParameter("@chapter", SqlDbType.Int) { Value = Chuong.Value });
-                questionCountParam.Add(new SqlParameter("@chapter", SqlDbType.Int) { Value = Chuong.Value });   
+                questionCountParam.Add(new SqlParameter("@chapter", SqlDbType.Int) { Value = Chuong.Value });
             }
-            else if (BienBao.HasValue && BienBao.Value == true)
+            if (BienBao.HasValue && BienBao.Value == true)
             {
                 whereClauses.Add("q.ImageLink <> ''");
             }
@@ -209,7 +209,7 @@ namespace ApiThiBangLaiXeOto.Controllers
                 return BadRequest(ex.Message);
             }
         }
-        [HttpPost]
+        [HttpPost("json")]
         //Get List of QuestionCreateDTO from json response
         public async Task<IActionResult> Create([FromBody] List<QuestionCreateDTO> dtos)
         {
@@ -254,6 +254,55 @@ namespace ApiThiBangLaiXeOto.Controllers
                 }
             }
             return Ok(CreatedQuestionInfoList);
+        }
+
+        [HttpPost("form")]
+        public async Task<IActionResult> CreateFromForm([FromForm] QuestionCreateDTO dto)
+        {
+
+            if (string.IsNullOrEmpty(dto.Question) || dto.Answers == null || !dto.Answers.Any())
+            {
+                return BadRequest("Câu hỏi không hợp lệ.");
+            }
+            else
+            {
+                string fileName = String.Empty;
+                using (var connection = new SqlConnection(_sql._connectionString))
+                {
+                    await connection.OpenAsync();
+                    using (var trans = connection.BeginTransaction())
+                    {
+                        try
+                        {
+                            if (dto.Image != null)
+                            {
+                                fileName = await UploadImage(dto.Image);
+                                dto.ImageLink = fileName;
+                            }
+
+                            int questionId = await InsertQuestion(dto, connection, trans);
+                            await InsertAnswers(questionId, dto.Answers, connection, trans);
+                            await InsertQuestionCategory(questionId, dto.CategoryIds, connection, trans);
+                            await trans.CommitAsync();
+
+                        }
+                        catch (Exception ex)
+                        {
+                            await trans.RollbackAsync();
+
+                            if (!string.IsNullOrEmpty(fileName))
+                            {
+                                DeleteImage(fileName);
+                            }
+                            return StatusCode(500, $"Tạo câu hỏi không thành công: {ex.Message}");
+
+                        }
+                    }
+                }
+            }
+
+
+            return Created();
         }
 
         [HttpDelete("{id}")]
@@ -352,6 +401,44 @@ namespace ApiThiBangLaiXeOto.Controllers
                     };
                 }).ToList();
             return finalList;
+        }
+
+        private async Task<string> UploadImage(IFormFile image)
+        {
+            string path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "assets", "uploads");
+
+            // Tạo thư mục nếu chưa tồn tại
+            if (!Directory.Exists(path))
+                Directory.CreateDirectory(path);
+
+            var fileName = Guid.NewGuid().ToString() + Path.GetExtension(image.FileName);
+            var filePath = Path.Combine(path, fileName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await image.CopyToAsync(stream);
+            }
+
+            return fileName;
+        }
+
+        private void DeleteImage(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName)) return;
+
+            string path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "assets", "uploads", fileName);
+            try
+            {
+                if (System.IO.File.Exists(path))
+                {
+                    System.IO.File.Delete(path);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log lỗi nếu không xóa được (do file đang bị khóa hoặc quyền truy cập)
+                Console.WriteLine($"Không thể xóa file: {ex.Message}");
+            }
         }
     }
 }

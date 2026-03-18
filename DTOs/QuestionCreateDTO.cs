@@ -15,5 +15,6 @@ public class QuestionCreateDTO
     public List<AnswerCreateDto> Answers { get; set; } = new();
     public string? Explain { get; set; }
     public string? ImageLink { get; set; }
+    public IFormFile? Image { get; set; }
 
 }
