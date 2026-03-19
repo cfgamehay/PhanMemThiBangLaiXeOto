@@ -97,7 +97,7 @@ namespace ApiThiBangLaiXeOto.Data
             }
         }
         //Dùng để thực thi các truy vấn trả về một giá trị đơn Id dùng để create -> trả về id của bản ghi vừa tạo -> 201 Created
-        public async Task<int> ExecuteScalarAsync(
+        public async Task<T?> ExecuteScalarAsync<T>(
             string sqlText,
             SqlParameter[]? parameters = null,
             CommandType commandType = CommandType.Text)
@@ -113,15 +113,16 @@ namespace ApiThiBangLaiXeOto.Data
 
                     if (result == null || result == DBNull.Value)
                     {
-                        return 0;
+                        return default;
                     }
 
-                    return int.Parse(result.ToString()!);
+                    return (T)Convert.ChangeType(result, typeof(T));
                 }
             }
         }
 
-        public async Task<int> ExecuteScalarAsync(
+
+        public async Task<T?> ExecuteScalarAsync<T>(
            string sqlText,
            SqlConnection connection,
            SqlTransaction transaction,
@@ -133,7 +134,11 @@ namespace ApiThiBangLaiXeOto.Data
                 command.CommandType = commandType;
                 if (parameters != null) command.Parameters.AddRange(parameters);
                 var result = await command.ExecuteScalarAsync();
-                return (result == null || result == DBNull.Value) ? 0 : Convert.ToInt32(result);
+                if (result == null || result == DBNull.Value)
+                {
+                    return default;
+                }
+                return (T)Convert.ChangeType(result, typeof(T));
             }
         }
 

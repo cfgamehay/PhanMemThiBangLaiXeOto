@@ -10,6 +10,7 @@ public class QuestionCreateDTO
     [Required]
     [MinLength(1, ErrorMessage = "Phải có ít nhất 1 danh mục")]
     public List<int> CategoryIds { get; set; } = new();
+    public bool IsCritical { get; set; } = false;
     [Required]
     [MinLength(2, ErrorMessage = "Phải có ít nhất 2 đáp án")]
     public List<AnswerCreateDto> Answers { get; set; } = new();

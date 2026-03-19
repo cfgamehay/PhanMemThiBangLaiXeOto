@@ -91,7 +91,7 @@ namespace ApiThiBangLaiXeOto.Controllers
                 new SqlParameter("@pass_score", SqlDbType.Int){ Value = dto.PassScore}
             };
 
-            var result = await _sql.ExecuteScalarAsync(query, conn, trans, parameters);
+            var result = await _sql.ExecuteScalarAsync<int>(query, conn, trans, parameters);
             return Convert.ToInt32(result);
         }
 

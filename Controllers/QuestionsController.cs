@@ -1,7 +1,10 @@
 ﻿using ApiThiBangLaiXeOto.Data;
 using ApiThiBangLaiXeOto.DTOs;
 using ApiThiBangLaiXeOto.Helper;
+using ApiThiBangLaiXeOto.Interface;
 using ApiThiBangLaiXeOto.Mapper;
+using ApiThiBangLaiXeOto.Service;
+using ApiThiBangLaiXeOto.Utils;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -15,9 +18,11 @@ namespace ApiThiBangLaiXeOto.Controllers
     public class QuestionsController : Controller
     {
         private readonly SqlHelper _sql;
-        public QuestionsController(SqlHelper sql)
+        private readonly IQuestionService _questionService;
+        public QuestionsController(SqlHelper sql, IQuestionService questionService)
         {
             _sql = sql;
+            _questionService = questionService;
         }
         [HttpGet]
         public async Task<IActionResult> GetQuestions([FromQuery] int? Chuong, bool? CauDiemLiet, bool? BienBao, int? SoLuong = 60, int? Trang = 1)
@@ -61,8 +66,7 @@ namespace ApiThiBangLaiXeOto.Controllers
                 {whereSql}
             ";
 
-            int totalQuestion = await _sql.ExecuteScalarAsync(queryCount, questionCountParam.ToArray());
-
+            int totalQuestion = await _sql.ExecuteScalarAsync<int>(queryCount, questionCountParam.ToArray());
             questionFilterParam.Add(new SqlParameter("@offset", SqlDbType.Int) { Value = offset });
             questionFilterParam.Add(new SqlParameter("@pageSize", SqlDbType.Int) { Value = pageSize });
             string queryGetQuestions = $@"
@@ -88,7 +92,7 @@ namespace ApiThiBangLaiXeOto.Controllers
                 FROM question AS q
                 INNER JOIN answer a ON a.QuestionId = q.Id
                 LEFT JOIN QuestionCategory qc ON qc.QuestionId = q.Id
-                WHERE q.Id IN (SELECT Id FROM PagedQuestions)
+                WHERE q.Id IN (SELECT Id FROM PagedQuestions) AND a.IsEnable <> 0
                 ORDER BY q.Id, a.Id;
             ";
             // Count total questions for pagination
@@ -128,7 +132,7 @@ namespace ApiThiBangLaiXeOto.Controllers
                     ON a.QuestionId = q.id
                 LEFT JOIN QuestionCategory qc 
                     ON qc.QuestionId = q.id
-                WHERE q.Id = @id;
+                WHERE q.Id = @id AND q.IsEnable <> 0 AND a.IsEnable <> 0;
             ";
             var parameters = new[]
             {
@@ -221,40 +225,41 @@ namespace ApiThiBangLaiXeOto.Controllers
                 return BadRequest("Danh sách câu hỏi không hợp lệ.");
             }
 
-            foreach (var dto in dtos)
+            //simple validate
+
+            using (var connection = new SqlConnection(_sql._connectionString))
             {
-                //simple validate
-                if (string.IsNullOrEmpty(dto.Question) || dto.Answers == null || !dto.Answers.Any())
-                {
-                    CreatedQuestionInfoList.Add(new { Message = "Câu hỏi không hợp lệ.", QuestionContent = dto });
-                    continue;
-                }
+                await connection.OpenAsync();
+                using (var trans = connection.BeginTransaction())
 
-                using (var connection = new SqlConnection(_sql._connectionString))
-                {
-                    await connection.OpenAsync();
-                    using (var trans = connection.BeginTransaction())
+                    try
                     {
-                        try
+                        foreach (var dto in dtos)
                         {
-                            int questionId = await InsertQuestion(dto, connection, trans);
-                            await InsertAnswers(questionId, dto.Answers, connection, trans);
-                            await InsertQuestionCategory(questionId, dto.CategoryIds, connection, trans);
-                            await trans.CommitAsync();
+                            if (string.IsNullOrEmpty(dto.Question) || dto.Answers == null || !dto.Answers.Any())
+                            {
+                                CreatedQuestionInfoList.Add(new { Message = "Câu hỏi không hợp lệ.", QuestionContent = dto });
+                                continue;
+                            }
 
+                            int questionId = await _questionService.InsertQuestion(dto, connection, trans);
+                            await _questionService.InsertAnswers(questionId, dto.Answers, connection, trans);
+                            await _questionService.InsertQuestionCategory(questionId, dto.CategoryIds, connection, trans);
                             CreatedQuestionInfoList.Add(new { QuestionId = questionId, Message = "Câu hỏi đã được tạo thành công." });
                         }
-                        catch (Exception ex)
-                        {
-                            await trans.RollbackAsync();
-                            //return StatusCode(500, $"An error occurred while creating the question: {ex.Message}");
-                            CreatedQuestionInfoList.Add(new { Message = $"Có lỗi xảy ra trong quá trình tạo câu hỏi {ex.Message}", });
-                        }
+                        await trans.CommitAsync();
                     }
-                }
+
+                    catch (Exception ex)
+                    {
+                        await trans.RollbackAsync();
+                        //return StatusCode(500, $"An error occurred while creating the question: {ex.Message}");
+                        CreatedQuestionInfoList.Add(new { Message = $"Có lỗi xảy ra trong quá trình tạo câu hỏi {ex.Message}", });
+                    }
             }
             return Ok(CreatedQuestionInfoList);
         }
+
 
         [HttpPost("form")]
         public async Task<IActionResult> CreateFromForm([FromForm] QuestionCreateDTO dto)
@@ -276,13 +281,13 @@ namespace ApiThiBangLaiXeOto.Controllers
                         {
                             if (dto.Image != null)
                             {
-                                fileName = await UploadImage(dto.Image);
+                                fileName = await ImageUtils.UploadImage(dto.Image);
                                 dto.ImageLink = fileName;
                             }
 
-                            int questionId = await InsertQuestion(dto, connection, trans);
-                            await InsertAnswers(questionId, dto.Answers, connection, trans);
-                            await InsertQuestionCategory(questionId, dto.CategoryIds, connection, trans);
+                            int questionId = await _questionService.InsertQuestion(dto, connection, trans);
+                            await _questionService.InsertAnswers(questionId, dto.Answers, connection, trans);
+                            await _questionService.InsertQuestionCategory(questionId, dto.CategoryIds, connection, trans);
                             await trans.CommitAsync();
 
                         }
@@ -292,7 +297,7 @@ namespace ApiThiBangLaiXeOto.Controllers
 
                             if (!string.IsNullOrEmpty(fileName))
                             {
-                                DeleteImage(fileName);
+                                ImageUtils.DeleteImage(fileName);
                             }
                             return StatusCode(500, $"Tạo câu hỏi không thành công: {ex.Message}");
 
@@ -303,6 +308,32 @@ namespace ApiThiBangLaiXeOto.Controllers
 
 
             return Created();
+        }
+
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateQuestion(int id, [FromForm] QuestionUpdateDto dto)
+        {
+            using (var connection = new SqlConnection(_sql._connectionString))
+            {
+                await connection.OpenAsync();
+                using (var trans = connection.BeginTransaction())
+                {
+                    try
+                    {
+                        await _questionService.UpdateQuestion(id, dto, connection, trans);
+                        await _questionService.UpdateAnswers(id, dto.Answers, dto.AnswerDeletedIds, connection, trans);
+                        await _questionService.UpdateQuestionCategory(id, dto.CategoryIds, connection, trans);
+                        await trans.CommitAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        await trans.RollbackAsync();
+
+                        return StatusCode(500, $"An error occurred while creating the question: {ex.Message}");
+                    }
+                }
+            }
+            return NoContent();
         }
 
         [HttpDelete("{id}")]
@@ -320,61 +351,6 @@ namespace ApiThiBangLaiXeOto.Controllers
 
             await _sql.ExecuteNonQueryAsync(query, parameters);
             return Ok(id);
-        }
-
-        private async Task<int> InsertQuestion(QuestionCreateDTO dto, SqlConnection conn, SqlTransaction trans)
-        {
-            string query = @"
-                INSERT INTO Question (Content, Explain, ImageLink, IsEnable)
-                OUTPUT INSERTED.ID
-                VALUES (@content, @explain, @image_link, @is_enable);
-             ";
-            var parameters = new[]
-            {
-                new SqlParameter("@content", SqlDbType.NVarChar){Value = dto.Question},
-                new SqlParameter("@explain", SqlDbType.NVarChar){ Value = dto.Explain ?? string.Empty},
-                new SqlParameter("@image_link", SqlDbType.NVarChar){ Value = dto.ImageLink ?? string.Empty},
-                new SqlParameter("@is_enable", SqlDbType.Int){ Value = 1}
-            };
-
-            var result = await _sql.ExecuteScalarAsync(query, conn, trans, parameters);
-            return Convert.ToInt32(result);
-        }
-
-        private async Task InsertAnswers(int questionId, List<AnswerCreateDto> answers, SqlConnection conn, SqlTransaction trans)
-        {
-            string query = @"
-                INSERT INTO answer (QuestionId, Content, IsCorrect, IsEnable)
-                VALUES (@question_id, @content, @is_correct, @is_enable);
-             ";
-            foreach (var answer in answers)
-            {
-                var parameters = new[]
-                {
-                    new SqlParameter("@question_id", SqlDbType.Int){ Value = questionId},
-                    new SqlParameter("@content", SqlDbType.NVarChar){ Value = answer.Text},
-                    new SqlParameter("@is_correct", SqlDbType.Bit){ Value = answer.IsCorrect},
-                    new SqlParameter("@is_enable", SqlDbType.Int){ Value = 1}
-                };
-                await _sql.ExecuteNonQueryAsync(query, conn, trans, parameters);
-            }
-        }
-
-        private async Task InsertQuestionCategory(int questionId, List<int> categoryIds, SqlConnection conn, SqlTransaction trans)
-        {
-            string query = @"
-                INSERT INTO QuestionCategory (QuestionId, CategoryId)
-                VALUES (@question_id, @category_id);
-             ";
-            foreach (var categoryId in categoryIds)
-            {
-                var parameters = new[]
-                {
-                    new SqlParameter("@question_id", SqlDbType.Int){ Value = questionId},
-                    new SqlParameter("@category_id", SqlDbType.Int){ Value = categoryId}
-                };
-                await _sql.ExecuteNonQueryAsync(query, conn, trans, parameters);
-            }
         }
 
         private List<QuestionDto> MergeQuestionList(List<QuestionRawDto> rawList)
@@ -401,44 +377,6 @@ namespace ApiThiBangLaiXeOto.Controllers
                     };
                 }).ToList();
             return finalList;
-        }
-
-        private async Task<string> UploadImage(IFormFile image)
-        {
-            string path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "assets", "uploads");
-
-            // Tạo thư mục nếu chưa tồn tại
-            if (!Directory.Exists(path))
-                Directory.CreateDirectory(path);
-
-            var fileName = Guid.NewGuid().ToString() + Path.GetExtension(image.FileName);
-            var filePath = Path.Combine(path, fileName);
-
-            using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await image.CopyToAsync(stream);
-            }
-
-            return fileName;
-        }
-
-        private void DeleteImage(string fileName)
-        {
-            if (string.IsNullOrEmpty(fileName)) return;
-
-            string path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "assets", "uploads", fileName);
-            try
-            {
-                if (System.IO.File.Exists(path))
-                {
-                    System.IO.File.Delete(path);
-                }
-            }
-            catch (Exception ex)
-            {
-                // Log lỗi nếu không xóa được (do file đang bị khóa hoặc quyền truy cập)
-                Console.WriteLine($"Không thể xóa file: {ex.Message}");
-            }
         }
     }
 }

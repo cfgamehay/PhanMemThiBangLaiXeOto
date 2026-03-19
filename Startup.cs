@@ -1,6 +1,8 @@
-using Microsoft.AspNetCore.Mvc.Routing;
 using ApiThiBangLaiXeOto.Data;
+using ApiThiBangLaiXeOto.Interface;
+using ApiThiBangLaiXeOto.Service;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 namespace ApiThiBangLaiXeOto;
@@ -19,6 +21,7 @@ public class Startup
     {
         services.AddControllers();
         services.AddScoped<SqlHelper>();
+        services.AddScoped<IQuestionService, QuestionService>();
         services.AddHttpLogging(options =>
         {
             options.LoggingFields = Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.All;
