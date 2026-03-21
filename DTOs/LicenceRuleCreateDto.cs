@@ -2,7 +2,7 @@
 
 namespace ApiThiBangLaiXeOto.DTOs
 {
-    public class LicenceRuleDto
+    public class LicenceRuleCreateDto
     {
         [Required]
         public int CategoryId { get; set; }

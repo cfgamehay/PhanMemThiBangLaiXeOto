@@ -1,5 +1,8 @@
 ﻿using ApiThiBangLaiXeOto.Data;
 using ApiThiBangLaiXeOto.DTOs;
+using ApiThiBangLaiXeOto.Helper;
+using ApiThiBangLaiXeOto.Mapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using System.Data;
@@ -7,15 +10,42 @@ using System.Data;
 namespace ApiThiBangLaiXeOto.Controllers
 {
     [ApiController]
-    [Route("api/licences")]
+    [Route("api/VanBang")]
     public class LicencesController : Controller
     {
+        //var user = await authHelper.GetUser(User, _sql);
 
         private readonly SqlHelper _sql;
         public LicencesController(SqlHelper sql)
         {
             _sql = sql;
         }
+        [Authorize(AuthenticationSchemes = "BearerMain")]
+        [HttpGet]
+        public async Task<IActionResult> GetLicences()
+        {
+            string query = @"
+                SELECT 
+                l.id as Id,
+                LicenceCode,
+                l.QuestionCount as TotalQuestion,
+                Duration,
+                PassScore,
+                c.name as CategoryName,
+                lr.QuestionCount,
+                c.Id as CategoryId
+                FROM Licence l
+                left join LicenceRule lr on l.id = lr.LicenceId
+                left join Category c on lr.CategoryId = c.Id
+            ";
+            var rawList = await _sql.ExecuteQueryAsync(query, LicenceMapper.ToRawLicenceListDto);
+            var finalList = MergeLicenceList(rawList);
+
+            
+            return Ok(finalList);
+        }
+
+
 
         [HttpPost]
         public async Task<IActionResult> CreateLicence([FromBody] LicenceCreateDto dto)
@@ -46,7 +76,7 @@ namespace ApiThiBangLaiXeOto.Controllers
             return NoContent();
         }
 
-        [HttpPost("{id}")]
+        [HttpPut("{id}")]
         public async Task<IActionResult> Update([FromBody] LicenceCreateDto dto, int id)
         {
 
@@ -95,7 +125,7 @@ namespace ApiThiBangLaiXeOto.Controllers
             return Convert.ToInt32(result);
         }
 
-        private async Task InsertLicenceRules(int licenceId, List<LicenceRuleDto> dtos, SqlConnection conn, SqlTransaction trans)
+        private async Task InsertLicenceRules(int licenceId, List<LicenceRuleCreateDto> dtos, SqlConnection conn, SqlTransaction trans)
         {
             string query = @"
                 INSERT INTO LicenceRule (LicenceId, CategoryId, QuestionCount)
@@ -135,7 +165,7 @@ namespace ApiThiBangLaiXeOto.Controllers
             await _sql.ExecuteNonQueryAsync(query, conn, trans, parameters);
         }
 
-        private async Task UpdateLicenceRule(int id, List<LicenceRuleDto> dtos, SqlConnection conn, SqlTransaction trans)
+        private async Task UpdateLicenceRule(int id, List<LicenceRuleCreateDto> dtos, SqlConnection conn, SqlTransaction trans)
         {
             string query = @"
                 UPDATE LicenceRule
@@ -160,6 +190,30 @@ namespace ApiThiBangLaiXeOto.Controllers
                 };
                 await _sql.ExecuteNonQueryAsync(query, conn, trans, parameters);
             }
+        }
+
+        private List<object> MergeLicenceList(List<RawLicenceListDto> rawList)
+        {
+            return rawList
+                .GroupBy(l => l.Id) // Nhóm theo LicenceId
+                .Select(g => new {
+                    LicenceId = g.Key,
+                    LicenceCode = g.First().LicenceCode,
+                    QuestionCount = g.First().TotalQuestion,
+                    Duration = g.First().Duration,
+                    PassScore = g.First().PassScore,
+                    // Gom tất cả các Category và QuestionCount vào một danh sách Rules
+                    LicenceRules = g
+                        .Where(x => !string.IsNullOrEmpty(x.CategoryName)) // Bỏ qua dòng NULL của Left Join
+                        .Select(r => new {
+                            CategoryId = r.CategoryId,
+                            CategoryName = r.CategoryName,
+                            QuestionCount = r.QuestionCount
+                        })
+                        .ToList()
+                })
+                .Cast<object>()
+                .ToList();
         }
     }
 }

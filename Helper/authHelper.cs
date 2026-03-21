@@ -6,14 +6,21 @@ namespace ApiThiBangLaiXeOto.Helper
 {
     public static class authHelper
     {
-        public static async Task<UserDTO> GetUser(ClaimsPrincipal User, SqlHelper _sql)
+        public static async Task<UserDTO?> GetUser(ClaimsPrincipal? principal, SqlHelper _sql)
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            // 1. Kiểm tra principal có null không (Tránh warn CS8600)
+            if (principal == null) return null;
+
+            // 2. Tìm Claim chứa ID (Sử dụng toán tử ?. để an toàn)
+            var userIdClaim = principal.FindFirst(ClaimTypes.NameIdentifier);
+
+            // 3. Kiểm tra giá trị Claim và ép kiểu
             if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
             {
-                UserDTO user = await _sql.GetUserAsync(userId, null);
-                return user;
+                // Truy vấn DB (Kết quả có thể là null nên UserDTO? là kiểu trả về phù hợp)
+                return await _sql.GetUserAsync(userId, null);
             }
+
             return null;
         }
     }

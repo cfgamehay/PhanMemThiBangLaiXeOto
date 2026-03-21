@@ -25,7 +25,7 @@ namespace ApiThiBangLaiXeOto.Controllers
             _questionService = questionService;
         }
         [HttpGet]
-        public async Task<IActionResult> GetQuestions([FromQuery] int? Chuong, bool? CauDiemLiet, bool? BienBao, int? SoLuong = 60, int? Trang = 1)
+        public async Task<IActionResult> GetQuestions([FromQuery] int? Chuong, bool? CauDiemLiet, bool? BienBao, int? SoLuong = 60, int? Trang = 1, string? TuKhoa = null)
         {
             int pageSize = Math.Max(1, SoLuong ?? 60);
             int page = Math.Max(1, Trang ?? 1);
@@ -37,7 +37,13 @@ namespace ApiThiBangLaiXeOto.Controllers
 
             // Only enabled questions
             whereClauses.Add("q.IsEnable <> 0");
-
+            if (!string.IsNullOrEmpty(TuKhoa))
+            {
+                TuKhoa = TuKhoa.Trim();
+                whereClauses.Add("q.Content LIKE @search OR q.Id LIKE @search");
+                questionFilterParam.Add(new SqlParameter("@search", SqlDbType.NVarChar) { Value = $"%{TuKhoa}%" });
+                questionCountParam.Add(new SqlParameter("@search", SqlDbType.NVarChar) { Value = $"%{TuKhoa}%" });
+            }
             if (CauDiemLiet.HasValue)
             {
                 whereClauses.Add("q.IsCritical = @isCritical");
@@ -54,6 +60,7 @@ namespace ApiThiBangLaiXeOto.Controllers
             {
                 whereClauses.Add("q.ImageLink <> ''");
             }
+
 
             var whereSql = whereClauses.Count > 0
                 ? "WHERE " + string.Join(" AND ", whereClauses)
@@ -213,6 +220,7 @@ namespace ApiThiBangLaiXeOto.Controllers
                 return BadRequest(ex.Message);
             }
         }
+        [Authorize(AuthenticationSchemes = "BearerMain")]
         [HttpPost("json")]
         //Get List of QuestionCreateDTO from json response
         public async Task<IActionResult> Create([FromBody] List<QuestionCreateDTO> dtos)
@@ -260,7 +268,7 @@ namespace ApiThiBangLaiXeOto.Controllers
             return Ok(CreatedQuestionInfoList);
         }
 
-
+        [Authorize(AuthenticationSchemes = "BearerMain")]
         [HttpPost("form")]
         public async Task<IActionResult> CreateFromForm([FromForm] QuestionCreateDTO dto)
         {
@@ -309,7 +317,7 @@ namespace ApiThiBangLaiXeOto.Controllers
 
             return Created();
         }
-
+        [Authorize(AuthenticationSchemes = "BearerMain")]
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateQuestion(int id, [FromForm] QuestionUpdateDto dto)
         {
@@ -335,7 +343,7 @@ namespace ApiThiBangLaiXeOto.Controllers
             }
             return NoContent();
         }
-
+        [Authorize(AuthenticationSchemes = "BearerMain")]
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteQuestion(int id)
         {

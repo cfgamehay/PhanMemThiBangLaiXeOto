@@ -13,6 +13,6 @@ namespace ApiThiBangLaiXeOto.DTOs
         [Required]
         public int PassScore { get; set; }
         [Required]
-        public List<LicenceRuleDto> LicenceRule { get; set; } = new();
+        public List<LicenceRuleCreateDto> LicenceRule { get; set; } = new();
     }
 }
