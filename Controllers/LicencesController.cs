@@ -20,7 +20,7 @@ namespace ApiThiBangLaiXeOto.Controllers
         {
             _sql = sql;
         }
-        [Authorize(AuthenticationSchemes = "BearerMain")]
+        //[Authorize(AuthenticationSchemes = "BearerMain")]
         [HttpGet]
         public async Task<IActionResult> GetLicences()
         {
@@ -37,6 +37,7 @@ namespace ApiThiBangLaiXeOto.Controllers
                 FROM Licence l
                 left join LicenceRule lr on l.id = lr.LicenceId
                 left join Category c on lr.CategoryId = c.Id
+                WHERE l.IsEnable = 1
             ";
             var rawList = await _sql.ExecuteQueryAsync(query, LicenceMapper.ToRawLicenceListDto);
             var finalList = MergeLicenceList(rawList);
@@ -106,19 +107,49 @@ namespace ApiThiBangLaiXeOto.Controllers
             return NoContent();
         }
 
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteLicence(int id)
+        {
+            using (var connection = new SqlConnection(_sql._connectionString))
+            {
+                await connection.OpenAsync();
+                using (var trans = connection.BeginTransaction())
+                {
+                    try
+                    {
+                        var query = "UPDATE Licence SET IsEnable = 0 WHERE Id = @id";
+                        var parameters = new[]
+                        {
+                            new SqlParameter("@id", SqlDbType.Int){ Value = id}
+                        };
+
+                        await _sql.ExecuteNonQueryAsync(query, connection, trans, parameters);
+                        trans.Commit();
+                    }
+                    catch (Exception ex)
+                    {
+                        await trans.RollbackAsync();
+                        return BadRequest(ex.Message);
+                    }
+                }
+            }
+            return NoContent();
+        }
+
         private async Task<int> InsertLicence(LicenceCreateDto dto, SqlConnection conn, SqlTransaction trans)
         {
             string query = @"
-                INSERT INTO Licence (LicenceCode, QuestionCount, Duration, PassScore)
+                INSERT INTO Licence (LicenceCode, QuestionCount, Duration, PassScore, IsEnable)
                 OUTPUT INSERTED.ID
-                VALUES (@licence_code, @question_count, @duration, @pass_score);
+                VALUES (@licence_code, @question_count, @duration, @pass_score, @is_enable);
              ";
             var parameters = new[]
             {
                 new SqlParameter("@licence_code", SqlDbType.NVarChar){Value = dto.LicenceCode.ToUpper()},
                 new SqlParameter("@question_count", SqlDbType.Int){ Value = dto.QuestionCount},
                 new SqlParameter("@duration", SqlDbType.Int){ Value = dto.Duration},
-                new SqlParameter("@pass_score", SqlDbType.Int){ Value = dto.PassScore}
+                new SqlParameter("@pass_score", SqlDbType.Int){ Value = dto.PassScore},
+                new SqlParameter("@is_enable", SqlDbType.Bit){ Value = true},
             };
 
             var result = await _sql.ExecuteScalarAsync<int>(query, conn, trans, parameters);

@@ -155,7 +155,7 @@ namespace ApiThiBangLaiXeOto.Controllers
         [HttpGet("CauTruc")]
         public async Task<IActionResult> GetStructureExam([FromQuery] string BangLai = "B")
         {
-            var query = "GenerateExam";
+            var query = "GenerateQuestionWithStructure";
             try
             {
                 var parameters = new[]
@@ -170,11 +170,14 @@ namespace ApiThiBangLaiXeOto.Controllers
                 CommandType.StoredProcedure
                 );
 
+                var firstLine = rawList.FirstOrDefault();
+
                 var finalList = MergeQuestionList(rawList);
 
                 var QuestionRespone = new
                 {
-                    LicenceCode = BangLai,
+                    LicenceCode = firstLine?.LicenceCode ?? "Unknown",
+                    Duration = firstLine?.Duration ?? 0,
                     QuestionCount = finalList.Count(),
                     Questions = finalList
                 };
@@ -188,15 +191,20 @@ namespace ApiThiBangLaiXeOto.Controllers
         }
 
         [HttpGet("NgauNhien")]
-        public async Task<IActionResult> GetRandomExam([FromQuery] string BangLai = "B")
+        public async Task<IActionResult> GetRandomExam([FromQuery] int SoLuong = 30)
         {
-            var query = "GenerateRandomExam";
+            var query = "GenerateQuestionRandom";
 
             try
             {
+                if(SoLuong <= 0)
+                {
+                    SoLuong = 10;
+                }
+
                 var parameters = new[]
 {
-                new SqlParameter("@LicenceCode", SqlDbType.NVarChar) { Value = BangLai }
+                new SqlParameter("@Quantity", SqlDbType.Int) { Value = SoLuong }
             };
 
                 var rawList = await _sql.ExecuteQueryAsync(
@@ -205,11 +213,14 @@ namespace ApiThiBangLaiXeOto.Controllers
                 parameters,
                 CommandType.StoredProcedure
                 );
+                var firstLine = rawList.FirstOrDefault();
 
                 var finalList = MergeQuestionList(rawList);
 
                 var QuestionRespone = new
                 {
+                    LicenceCode = firstLine?.LicenceCode ?? "Unknown",
+                    Duration = firstLine?.Duration ?? 0,
                     QuestionCount = finalList.Count(),
                     Questions = finalList
                 };
