@@ -63,7 +63,12 @@ namespace ApiThiBangLaiXeOto.Controllers
             }
             // 4. Tạo token (lưu ý: user.Authorize nên là tên role nếu dùng Role-based authorization)
             var token = GenerateJwtToken( user.Id, user.Role);
-            return Ok(new { accessToken = token });
+            return Ok(new
+            {
+                accessToken = token,
+                role = user.Role,     
+                name = user.UserName,   
+            });
 
         }
         [Authorize(AuthenticationSchemes = "BearerMain")]
