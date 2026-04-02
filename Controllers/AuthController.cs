@@ -51,7 +51,7 @@ namespace ApiThiBangLaiXeOto.Controllers
 
             // 3. Lấy user (sau khi đã verify)
             var user = await _sql.GetUserAsync(null, dto.Username);
-            if (user == null) 
+            if (user == null)
                 return Unauthorized(new { message = "Invalid login" });
             // kiểm tra Status
             if (!user.Status)
@@ -62,12 +62,12 @@ namespace ApiThiBangLaiXeOto.Controllers
                 });
             }
             // 4. Tạo token (lưu ý: user.Authorize nên là tên role nếu dùng Role-based authorization)
-            var token = GenerateJwtToken( user.Id, user.Role);
+            var token = GenerateJwtToken(user.Id, user.Role);
             return Ok(new
             {
                 accessToken = token,
-                role = user.Role,     
-                name = user.UserName,   
+                role = user.Role,
+                name = user.UserName,
             });
 
         }
@@ -85,10 +85,12 @@ namespace ApiThiBangLaiXeOto.Controllers
 
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
+            var roleName = userRole == 1 ? "ADMIN" : "USER";
+
             var claims = new[]
             {
         new Claim(ClaimTypes.NameIdentifier, iduser.ToString()),
-        new Claim(ClaimTypes.Role, userRole.ToString()),
+        new Claim(ClaimTypes.Role, roleName),
         new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         new Claim(JwtRegisteredClaimNames.Iat,
             DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
