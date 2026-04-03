@@ -71,7 +71,7 @@ namespace ApiThiBangLaiXeOto.Service
                         .SendAsync("CallTimeout");
 
                     await _hubContext.Clients.Client(target.ConnectionId)
-                        .SendAsync("CallTimeout");
+                        .SendAsync("CallTimeoutForReceiver");
                 }
             }
             catch (TaskCanceledException)
