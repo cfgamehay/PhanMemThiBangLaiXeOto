@@ -23,6 +23,7 @@ public class Startup
         services.AddSignalR();
         services.AddScoped<SqlHelper>();
         services.AddScoped<IQuestionService, QuestionService>();
+        services.AddScoped<ConsultationService>();
         services.AddHttpLogging(options =>
         {
             options.LoggingFields = Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.All;

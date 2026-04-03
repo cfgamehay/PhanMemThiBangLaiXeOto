@@ -1,6 +1,5 @@
 ﻿using ApiThiBangLaiXeOto.Data;
 using ApiThiBangLaiXeOto.DTOs;
-using ApiThiBangLaiXeOto.Helper;
 using ApiThiBangLaiXeOto.Service;
 using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
@@ -10,17 +9,24 @@ namespace ApiThiBangLaiXeOto.Hubs
     public class ConsultationHub : Hub
     {
         private readonly SqlHelper _sql;
-        public ConsultationHub(SqlHelper sql)
+        private readonly ConsultationService _service;
+
+        public ConsultationHub(SqlHelper sql, ConsultationService service)
         {
             _sql = sql;
+            _service = service;
         }
+
+        // ================================
+        // 🟢 ONLINE
+        // ================================
         public async Task Register()
         {
-
             var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;
-   
-            if (userId == null || role == null) return;
+
+            if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(role))
+                return;
 
             var userDb = await _sql.GetUserAsync(int.Parse(userId));
 
@@ -28,10 +34,11 @@ namespace ApiThiBangLaiXeOto.Hubs
             {
                 UserId = userId,
                 Name = string.IsNullOrEmpty(userDb?.UserName)
-                ? (role == "ADMIN" ? $"Admin {userId}" : $"User {userId}")
-                : userDb.UserName,
-                Role = role,
-                ConnectionId = Context.ConnectionId
+                    ? (role.ToUpper() == "ADMIN" ? $"Admin {userId}" : $"User {userId}")
+                    : userDb.UserName,
+                Role = role.ToUpper(),
+                ConnectionId = Context.ConnectionId,
+                IsCalling = false
             };
 
             OnlineStore.Users[Context.ConnectionId] = user;
@@ -39,24 +46,111 @@ namespace ApiThiBangLaiXeOto.Hubs
             await BroadcastUsers();
         }
 
-        // 🔥 Tắt online
+        // ================================
+        // 🔴 OFFLINE
+        // ================================
         public async Task SetOffline()
         {
             OnlineStore.Users.TryRemove(Context.ConnectionId, out _);
             await BroadcastUsers();
         }
 
-        // 🔥 Trạng thái đang gọi
-        public async Task SetCalling(bool isCalling)
+        // ================================
+        // 📞 GỌI NGƯỜI KHÁC
+        // ================================
+        public async Task CallUser(string targetUserId)
         {
-            if (OnlineStore.Users.TryGetValue(Context.ConnectionId, out var user))
-            {
-                user.IsCalling = isCalling;
-                await BroadcastUsers();
-            }
+            var caller = OnlineStore.Users
+                .FirstOrDefault(x => x.Key == Context.ConnectionId).Value;
+
+            if (caller == null) return;
+
+            var target = OnlineStore.Users.Values
+                .FirstOrDefault(u => u.UserId == targetUserId);
+
+            if (target == null) return;
+
+            if (caller.IsCalling || target.IsCalling)
+                return;
+
+            // 🔥 set trạng thái
+            caller.IsCalling = true;
+            target.IsCalling = true;
+
+            // 🔥 gửi popup cho người bị gọi
+            await Clients.Client(target.ConnectionId)
+                .SendAsync("IncomingCall", new
+                {
+                    fromUserId = caller.UserId,
+                    fromName = caller.Name
+                });
+
+            await BroadcastUsers();
+            _ = _service.HandleTimeout(caller.UserId, target.UserId);
+        }
+        public async Task AcceptCall(string targetUserId)
+        {
+            var caller = OnlineStore.Users.Values
+                .FirstOrDefault(u => u.UserId == targetUserId);
+
+            var current = OnlineStore.Users
+                .FirstOrDefault(x => x.Key == Context.ConnectionId).Value;
+
+            if (caller == null || current == null) return;
+
+            // 🔥 vẫn giữ trạng thái calling (đang trong call)
+
+            await Clients.Client(caller.ConnectionId)
+                .SendAsync("CallAccepted");
+
+            await Clients.Client(current.ConnectionId)
+                .SendAsync("CallAccepted");
         }
 
-        // 🔥 Auto offline khi đóng tab
+        public async Task RejectCall(string targetUserId)
+        {
+            var caller = OnlineStore.Users.Values
+                .FirstOrDefault(u => u.UserId == targetUserId);
+
+            OnlineStore.Users.TryGetValue(Context.ConnectionId, out var current);
+
+            if (current != null)
+                current.IsCalling = false;
+
+            if (caller != null)
+                caller.IsCalling = false;
+
+            await BroadcastUsers();
+
+            if (caller != null)
+            {
+                await Clients.Client(caller.ConnectionId)
+                    .SendAsync("CallRejected");
+            }
+        }
+        // ================================
+        // 📴 KẾT THÚC GỌI
+        // ================================
+        public async Task EndCall(string targetUserId)
+        {
+            var caller = OnlineStore.Users
+                .FirstOrDefault(x => x.Key == Context.ConnectionId).Value;
+
+            var target = OnlineStore.Users.Values
+                .FirstOrDefault(u => u.UserId == targetUserId);
+
+            if (caller != null)
+                caller.IsCalling = false;
+
+            if (target != null)
+                target.IsCalling = false;
+
+            await BroadcastUsers();
+        }
+
+        // ================================
+        // 🔌 AUTO OFFLINE (đóng tab)
+        // ================================
         public override async Task OnDisconnectedAsync(Exception exception)
         {
             OnlineStore.Users.TryRemove(Context.ConnectionId, out _);
@@ -65,7 +159,9 @@ namespace ApiThiBangLaiXeOto.Hubs
             await base.OnDisconnectedAsync(exception);
         }
 
-        // 🔥 Gửi danh sách (lọc role)
+        // ================================
+        // 📡 BROADCAST REALTIME
+        // ================================
         private async Task BroadcastUsers()
         {
             var users = OnlineStore.Users.Values.ToList();
@@ -76,17 +172,17 @@ namespace ApiThiBangLaiXeOto.Hubs
 
                 List<OnlineUserDto> filtered;
 
-                if (currentUser.Role.ToUpper() == "ADMIN")
+                if (currentUser.Role == "ADMIN")
                 {
-                    filtered = users.Where(u => u.Role.ToUpper() == "USER").ToList();
+                    filtered = users.Where(u => u.Role == "USER").ToList();
                 }
                 else
                 {
-                    filtered = users.Where(u => u.Role.ToUpper() == "ADMIN").ToList();
+                    filtered = users.Where(u => u.Role == "ADMIN").ToList();
                 }
 
                 await Clients.Client(connection.Key)
-                    .SendAsync("ReceiveOnlineUsers", filtered);
+                    .SendAsync("ReceiveOnlineUsers", filtered, currentUser.IsCalling);
             }
         }
     }
