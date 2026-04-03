@@ -7,5 +7,10 @@
         public string Role { get; set; } // "admin" | "user"
         public string ConnectionId { get; set; }
         public bool IsCalling { get; set; } = false;
+
+        // ✅ Thêm cờ mới để biết cuộc gọi đã được accept hay chưa
+        public bool IsInCall { get; set; } = false;
+
+        public string? CallId { get; set; }
     }
 }

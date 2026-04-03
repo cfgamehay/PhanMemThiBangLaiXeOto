@@ -73,9 +73,14 @@ namespace ApiThiBangLaiXeOto.Hubs
             if (caller.IsCalling || target.IsCalling)
                 return;
 
+            
+            var callId = Guid.NewGuid().ToString();
             // 🔥 set trạng thái
             caller.IsCalling = true;
             target.IsCalling = true;
+
+            caller.CallId = callId;
+            target.CallId = callId;
 
             // 🔥 gửi popup cho người bị gọi
             await Clients.Client(target.ConnectionId)
@@ -86,7 +91,7 @@ namespace ApiThiBangLaiXeOto.Hubs
                 });
 
             await BroadcastUsers();
-            _ = _service.HandleTimeout(caller.UserId, target.UserId);
+            _ = _service.HandleTimeout(caller.UserId, target.UserId, callId);
         }
         public async Task AcceptCall(string targetUserId)
         {
@@ -98,7 +103,13 @@ namespace ApiThiBangLaiXeOto.Hubs
 
             if (caller == null || current == null) return;
 
-            // 🔥 vẫn giữ trạng thái calling (đang trong call)
+            caller.IsCalling = false;
+            current.IsCalling = false;
+
+            caller.IsInCall = true;
+            current.IsInCall = true;
+
+            _service.CancelTimeout(caller.UserId, current.UserId);
 
             await Clients.Client(caller.ConnectionId)
                 .SendAsync("CallAccepted");
@@ -109,23 +120,33 @@ namespace ApiThiBangLaiXeOto.Hubs
 
         public async Task RejectCall(string targetUserId)
         {
-            var caller = OnlineStore.Users.Values
-                .FirstOrDefault(u => u.UserId == targetUserId);
-
+            var caller = OnlineStore.Users.Values.FirstOrDefault(u => u.UserId == targetUserId);
             OnlineStore.Users.TryGetValue(Context.ConnectionId, out var current);
 
             if (current != null)
+            {
                 current.IsCalling = false;
+                current.IsInCall = false;
+                current.CallId = null;
+            }
 
             if (caller != null)
+            {
                 caller.IsCalling = false;
+                caller.IsInCall = false;
+                caller.CallId = null;
+            }
+
+            if (caller != null && current != null)
+            {
+                _service.CancelTimeout(caller.UserId, current.UserId);
+            }
 
             await BroadcastUsers();
 
             if (caller != null)
             {
-                await Clients.Client(caller.ConnectionId)
-                    .SendAsync("CallRejected");
+                await Clients.Client(caller.ConnectionId).SendAsync("CallRejected");
             }
         }
         // ================================
@@ -140,10 +161,18 @@ namespace ApiThiBangLaiXeOto.Hubs
                 .FirstOrDefault(u => u.UserId == targetUserId);
 
             if (caller != null)
+            {
                 caller.IsCalling = false;
+                caller.IsInCall = false;
+                caller.CallId = null;
+            }
 
             if (target != null)
+            {
                 target.IsCalling = false;
+                target.IsInCall = false;
+                target.CallId = null;
+            }
 
             await BroadcastUsers();
         }
