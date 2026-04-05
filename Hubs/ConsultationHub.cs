@@ -109,6 +109,7 @@ namespace ApiThiBangLaiXeOto.Hubs
             caller.IsInCall = true;
             current.IsInCall = true;
 
+
             _service.CancelTimeout(caller.UserId, current.UserId);
 
             await Clients.Client(caller.ConnectionId)
@@ -150,39 +151,164 @@ namespace ApiThiBangLaiXeOto.Hubs
             }
         }
         // ================================
-        // 📴 KẾT THÚC GỌI
+        // Huỷ cuộc gọi từ bên gọi (khi đang chờ accept)
         // ================================
-        public async Task EndCall(string targetUserId)
+        public async Task CancelCall()
         {
             var caller = OnlineStore.Users
                 .FirstOrDefault(x => x.Key == Context.ConnectionId).Value;
 
-            var target = OnlineStore.Users.Values
-                .FirstOrDefault(u => u.UserId == targetUserId);
+            if (caller == null || !caller.IsCalling || string.IsNullOrEmpty(caller.CallId))
+                return;
 
-            if (caller != null)
-            {
-                caller.IsCalling = false;
-                caller.IsInCall = false;
-                caller.CallId = null;
-            }
+            var callId = caller.CallId;
 
-            if (target != null)
+            // Tìm người nhận
+            var receiver = OnlineStore.Users.Values
+                .FirstOrDefault(u => u.CallId == callId && u.ConnectionId != Context.ConnectionId);
+
+            // Reset trạng thái cả hai bên
+            caller.IsCalling = false;
+            caller.CallId = null;
+
+            if (receiver != null)
             {
-                target.IsCalling = false;
-                target.IsInCall = false;
-                target.CallId = null;
+                receiver.IsCalling = false;
+                receiver.CallId = null;
+                await Clients.Client(receiver.ConnectionId).SendAsync("CallRejected");
             }
 
             await BroadcastUsers();
         }
+        // ================================
+        // 📴 KẾT THÚC CUỘC GỌI (CẢ HAI BÊN ĐỀU GỌI ĐƯỢC)
+        // ================================
+        public async Task EndCall()
+        {
+            var currentConnectionId = Context.ConnectionId;
+
+            // Tìm người đang gọi (current user)
+            if (!OnlineStore.Users.TryGetValue(currentConnectionId, out var currentUser))
+                return;
+
+            // Nếu không đang trong cuộc gọi thì bỏ qua
+            if (!currentUser.IsInCall || string.IsNullOrEmpty(currentUser.CallId))
+            {
+                await BroadcastUsers();
+                return;
+            }
+
+            var callId = currentUser.CallId;
+
+            // Tìm đối phương theo CallId
+            var targetUser = OnlineStore.Users.Values
+                .FirstOrDefault(u => u.CallId == callId && u.ConnectionId != currentConnectionId);
+
+            // Reset trạng thái cho cả hai bên
+            currentUser.IsCalling = false;
+            currentUser.IsInCall = false;
+            currentUser.CallId = null;
+
+            if (targetUser != null)
+            {
+                targetUser.IsCalling = false;
+                targetUser.IsInCall = false;
+                targetUser.CallId = null;
+            }
+
+            // Gửi thông báo "CallEnded" cho cả hai bên (rất quan trọng)
+            await Clients.Client(currentUser.ConnectionId).SendAsync("CallEnded");
+
+            if (targetUser != null)
+            {
+                await Clients.Client(targetUser.ConnectionId).SendAsync("CallEnded");
+            }
+
+            // Broadcast lại danh sách online (cập nhật trạng thái IsCalling/IsInCall)
+            await BroadcastUsers();
+
+            Console.WriteLine($"Cuộc gọi {callId} đã kết thúc bởi {currentUser.Name}");
+        }
 
         // ================================
-        // 🔌 AUTO OFFLINE (đóng tab)
+        // 🔌 AUTO CLEANUP KHI USER DISCONNECT (F5, đóng tab, mất kết nối)
         // ================================
-        public override async Task OnDisconnectedAsync(Exception exception)
+        public override async Task OnDisconnectedAsync(Exception? exception)
         {
-            OnlineStore.Users.TryRemove(Context.ConnectionId, out _);
+            var connectionId = Context.ConnectionId;
+
+            if (!OnlineStore.Users.TryGetValue(connectionId, out var user))
+            {
+                await base.OnDisconnectedAsync(exception);
+                return;
+            }
+
+            Console.WriteLine($"[OnDisconnectedAsync] User {user.Name} disconnected. ConnectionId: {connectionId}");
+
+            // ==================== TRƯỜNG HỢP 1: ĐANG TRONG CUỘC GỌI ====================
+            if (user.IsInCall && !string.IsNullOrEmpty(user.CallId))
+            {
+                var callId = user.CallId;
+
+                // Tìm đối phương
+                var otherUser = OnlineStore.Users.Values
+                    .FirstOrDefault(u => u.CallId == callId && u.ConnectionId != connectionId);
+
+                Console.WriteLine($"[OnDisconnectedAsync] Đang trong cuộc gọi {callId}. Reset cả hai bên.");
+
+                // Reset trạng thái cho người vừa disconnect
+                user.IsCalling = false;
+                user.IsInCall = false;
+                user.CallId = null;
+
+                // Reset trạng thái cho đối phương
+                if (otherUser != null)
+                {
+                    otherUser.IsCalling = false;
+                    otherUser.IsInCall = false;
+                    otherUser.CallId = null;
+
+                    // Thông báo cho đối phương rằng cuộc gọi bị ngắt
+                    await Clients.Client(otherUser.ConnectionId)
+                        .SendAsync("CallEnded", "Đối phương đã ngắt kết nối đột ngột");
+                }
+
+                Console.WriteLine($"[OnDisconnectedAsync] Đã reset trạng thái cuộc gọi {callId}");
+            }
+            // ==================== TRƯỜNG HỢP 2: ĐANG CÓ INCOMING CALL (chưa accept) ====================
+            else if (user.IsCalling && !string.IsNullOrEmpty(user.CallId))
+            {
+                var callId = user.CallId;
+
+                Console.WriteLine($"[OnDisconnectedAsync] User {user.Name} có IncomingCall đang chờ → Reset và thông báo cho cả hai bên");
+
+                // Tìm người gọi (caller)
+                var caller = OnlineStore.Users.Values
+                    .FirstOrDefault(u => u.CallId == callId && u.ConnectionId != connectionId);
+
+                // Reset trạng thái cho cả hai bên
+                user.IsCalling = false;
+                user.CallId = null;
+
+                if (caller != null)
+                {
+                    caller.IsCalling = false;
+                    caller.CallId = null;
+
+                    // Gửi CallRejected cho bên gọi
+                    await Clients.Client(caller.ConnectionId).SendAsync("CallRejected");
+                    Console.WriteLine($"[OnDisconnectedAsync] Đã gửi CallRejected cho Caller: {caller.Name}");
+                }
+
+                // Gửi CallRejected cho bên nhận (người vừa reload)
+                await Clients.Client(user.ConnectionId).SendAsync("CallRejected");
+                Console.WriteLine($"[OnDisconnectedAsync] Đã gửi CallRejected cho Receiver: {user.Name}");
+            }
+
+            // Xóa user khỏi danh sách online
+            OnlineStore.Users.TryRemove(connectionId, out _);
+
+            // Cập nhật danh sách online cho tất cả mọi người
             await BroadcastUsers();
 
             await base.OnDisconnectedAsync(exception);
