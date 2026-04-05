@@ -340,5 +340,37 @@ namespace ApiThiBangLaiXeOto.Hubs
                     .SendAsync("ReceiveOnlineUsers", filtered, currentUser.IsCalling);
             }
         }
+        // ================================
+        // 💬 CHAT REALTIME TRONG CUỘC GỌI
+        // ================================
+
+        // Bên gọi / nhận gửi tin nhắn
+        public async Task SendMessage(string message)
+        {
+            var current = OnlineStore.Users
+                .FirstOrDefault(x => x.Key == Context.ConnectionId).Value;
+
+            if (current == null || !current.IsInCall || string.IsNullOrEmpty(current.CallId))
+                return;
+
+            var callId = current.CallId;
+
+            // Tìm người còn lại trong cùng cuộc gọi
+            var otherUser = OnlineStore.Users.Values
+                .FirstOrDefault(u => u.CallId == callId && u.ConnectionId != Context.ConnectionId);
+
+            if (otherUser == null) return;
+
+            // Gửi cho người kia
+            await Clients.Client(otherUser.ConnectionId)
+                .SendAsync("ReceiveMessage", new ChatMessageDto
+                {
+                    Text = message,
+                    FromUserId = current.UserId,
+                    FromName = current.Name,
+                    Timestamp = DateTime.UtcNow
+                });
+
+        }
     }
 }
