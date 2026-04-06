@@ -112,11 +112,21 @@ namespace ApiThiBangLaiXeOto.Hubs
 
             _service.CancelTimeout(caller.UserId, current.UserId);
 
-            await Clients.Client(caller.ConnectionId)
-                .SendAsync("CallAccepted");
+            var callAcceptedData = new
+            {
+                FromUserId = current.UserId,      // Người đang chấp nhận (current)
+                FromName = current.Name,
+                TargetUserId = caller.UserId,     // Đối phương
+                TargetName = caller.Name
+            };
 
+            // Gửi cho người gọi (caller)
+            await Clients.Client(caller.ConnectionId)
+                .SendAsync("CallAccepted", callAcceptedData);
+
+            // Gửi cho người nhận (current)
             await Clients.Client(current.ConnectionId)
-                .SendAsync("CallAccepted");
+                .SendAsync("CallAccepted", callAcceptedData);
         }
 
         public async Task RejectCall(string targetUserId)
@@ -227,7 +237,6 @@ namespace ApiThiBangLaiXeOto.Hubs
             // Broadcast lại danh sách online (cập nhật trạng thái IsCalling/IsInCall)
             await BroadcastUsers();
 
-            Console.WriteLine($"Cuộc gọi {callId} đã kết thúc bởi {currentUser.Name}");
         }
 
         // ================================
@@ -371,6 +380,87 @@ namespace ApiThiBangLaiXeOto.Hubs
                     Timestamp = DateTime.UtcNow
                 });
 
+        }
+        // ================================
+        // 🎤 WEBRTC SIGNALING - VOICE CALL
+        // ================================
+        public async Task SendOffer(string targetUserId, string sdp)
+        {
+            if (string.IsNullOrEmpty(targetUserId) || string.IsNullOrEmpty(sdp))
+                return;
+
+            var target = OnlineStore.Users.Values
+            .FirstOrDefault(u => u.UserId == targetUserId);
+
+            if (target == null)
+            {
+                Console.WriteLine($"❌ User {targetUserId} NOT FOUND");
+                return;
+            }
+
+            var fromUserId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            await Clients.Client(target.ConnectionId).SendAsync("ReceiveOffer", new
+            {
+                fromUserId,
+                sdp
+            });
+
+            Console.WriteLine($"[WebRTC] Offer: {fromUserId} → {targetUserId}");
+        }
+        public async Task SendAnswer(string targetUserId, string sdp)
+        {
+            if (string.IsNullOrEmpty(targetUserId) || string.IsNullOrEmpty(sdp))
+                return;
+
+            var target = OnlineStore.Users.Values
+            .FirstOrDefault(u => u.UserId == targetUserId);
+
+            if (target == null)
+            {
+                Console.WriteLine($"❌ User {targetUserId} NOT FOUND");
+                return;
+            }
+
+            var fromUserId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            await Clients.Client(target.ConnectionId).SendAsync("ReceiveAnswer", new
+            {
+                fromUserId,
+                sdp
+            });
+
+            Console.WriteLine($"[WebRTC] Answer: {fromUserId} → {targetUserId}");
+        }
+        public async Task SendIceCandidate(
+            string targetUserId,
+            string candidate,
+            string sdpMid,
+            int sdpMLineIndex)
+        {
+            if (string.IsNullOrEmpty(targetUserId) || string.IsNullOrEmpty(candidate))
+                return;
+
+            var target = OnlineStore.Users.Values
+            .FirstOrDefault(u => u.UserId == targetUserId);
+
+            if (target == null)
+            {
+                Console.WriteLine($"❌ User {targetUserId} NOT FOUND");
+                return;
+            }
+
+            var fromUserId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            await Clients.Client(target.ConnectionId).SendAsync("ReceiveIceCandidate", new
+            {
+                fromUserId,
+                candidate,
+                sdpMid,
+                sdpMLineIndex
+            });
+
+            Console.WriteLine($"[WebRTC] ICE: {fromUserId} → {targetUserId}");
         }
     }
 }

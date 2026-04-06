@@ -68,6 +68,7 @@ namespace ApiThiBangLaiXeOto.Controllers
                 accessToken = token,
                 role = user.Role,
                 name = user.UserName,
+                userId = user.Id,
             });
 
         }
