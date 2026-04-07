@@ -463,18 +463,5 @@ namespace ApiThiBangLaiXeOto.Hubs
             Console.WriteLine($"[WebRTC] ICE: {fromUserId} → {targetUserId}");
         }
 
-        public async Task SendCameraOff(string targetUserId)
-        {
-            var target = OnlineStore.Users.Values
-                .FirstOrDefault(u => u.UserId == targetUserId);
-
-            if (target == null)
-            {
-                return;
-            }
-
-            await Clients.Client(target.ConnectionId)
-                .SendAsync("CameraOff");
-        }
     }
 }
