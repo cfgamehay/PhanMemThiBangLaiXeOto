@@ -76,32 +76,34 @@ namespace ApiThiBangLaiXeOto.Controllers
             int totalQuestion = await _sql.ExecuteScalarAsync<int>(queryCount, questionCountParam.ToArray());
             questionFilterParam.Add(new SqlParameter("@offset", SqlDbType.Int) { Value = offset });
             questionFilterParam.Add(new SqlParameter("@pageSize", SqlDbType.Int) { Value = pageSize });
+            // ... (Giữ nguyên phần khởi tạo whereClauses và params)
+
             string queryGetQuestions = $@"
-                WITH PagedQuestions AS (
-                    SELECT q.Id
-                    FROM question q
-                    LEFT JOIN QuestionCategory qc ON qc.QuestionId = q.Id
-                    {whereSql}
-                    GROUP BY q.Id
-                    ORDER BY q.Id
-                    OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
-                )
-                SELECT
-                    q.Id           AS QuestionId,
-                    q.Content      AS QuestionContent,
-                    q.Explain      AS Explanation,
-                    q.ImageLink    AS ImageUrl,
-                    qc.CategoryId  AS CategoryId,
-                    a.Id           AS AnswerId,
-                    a.Content      AS AnswerContent,
-                    a.IsCorrect    AS IsCorrect,
-                    q.IsCritical   AS IsCritical
-                FROM question AS q
-                INNER JOIN answer a ON a.QuestionId = q.Id
-                LEFT JOIN QuestionCategory qc ON qc.QuestionId = q.Id
-                WHERE q.Id IN (SELECT Id FROM PagedQuestions) AND a.IsEnable <> 0
-                ORDER BY q.Id, a.Id;
-            ";
+    WITH PagedQuestions AS (
+        SELECT DISTINCT q.Id
+        FROM question q
+        INNER JOIN QuestionCategory qc ON qc.QuestionId = q.Id -- Dùng INNER JOIN để chắc chắn có chương
+        {whereSql}
+        ORDER BY q.Id
+        OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
+    )
+    SELECT 
+        q.Id           AS QuestionId,
+        q.Content      AS QuestionContent,
+        q.Explain      AS Explanation,
+        q.ImageLink    AS ImageUrl,
+        qc.CategoryId  AS CategoryId,
+        a.Id           AS AnswerId,
+        a.Content      AS AnswerContent,
+        a.IsCorrect    AS IsCorrect,
+        q.IsCritical   AS IsCritical
+    FROM question AS q
+    INNER JOIN answer a ON a.QuestionId = q.Id
+    INNER JOIN QuestionCategory qc ON qc.QuestionId = q.Id -- Đổi thành INNER JOIN
+    WHERE q.Id IN (SELECT Id FROM PagedQuestions) 
+    AND a.IsEnable <> 0
+    {(Chuong.HasValue ? "AND qc.CategoryId = @chapter" : "")} -- Lọc lại chương ở đây nếu cần chính xác tuyệt đối
+    ORDER BY q.Id, a.Id;";
             // Count total questions for pagination
 
             var rawList = await _sql.ExecuteQueryAsync(queryGetQuestions, QuestionMapper.ToRawQuestionListDto, questionFilterParam.ToArray());

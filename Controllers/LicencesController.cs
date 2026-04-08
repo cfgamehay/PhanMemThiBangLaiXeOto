@@ -42,7 +42,7 @@ namespace ApiThiBangLaiXeOto.Controllers
             var rawList = await _sql.ExecuteQueryAsync(query, LicenceMapper.ToRawLicenceListDto);
             var finalList = MergeLicenceList(rawList);
 
-            
+
             return Ok(finalList);
         }
 
@@ -52,7 +52,8 @@ namespace ApiThiBangLaiXeOto.Controllers
         public async Task<IActionResult> CreateLicence([FromBody] LicenceCreateDto dto)
         {
 
-            if (dto == null) {
+            if (dto == null)
+            {
                 return BadRequest("Thông tin không hợp lệ");
             }
 
@@ -198,28 +199,37 @@ namespace ApiThiBangLaiXeOto.Controllers
 
         private async Task UpdateLicenceRule(int id, List<LicenceRuleCreateDto> dtos, SqlConnection conn, SqlTransaction trans)
         {
-            string query = @"
-                UPDATE LicenceRule
-                SET QuestionCount = @question_count
-                WHERE LicenceId = @licence_id
-                AND CategoryId = @category_id
-
-                IF @@ROWCOUNT = 0
-                BEGIN
-                    INSERT INTO LicenceRule(LicenceId, CategoryId, QuestionCount)
-                    VALUES (@licence_id, @category_id, @question_count)
-                END
-             ";
-
-            foreach (var licenceRule in dtos)
+            // 1. Xóa TẤT CẢ các rule cũ của Licence này trước
+            string deleteQuery = "DELETE FROM LicenceRule WHERE LicenceId = @licence_id";
+            var deleteParams = new[]
             {
-                var parameters = new[]
+        new SqlParameter("@licence_id", SqlDbType.Int) { Value = id }
+    };
+
+            // Lưu ý: Dùng đúng connection và transaction đang mở để tránh deadlock
+            await _sql.ExecuteNonQueryAsync(deleteQuery, conn, trans, deleteParams);
+
+            // 2. Nếu danh sách mới có dữ liệu thì chèn lại toàn bộ
+            if (dtos != null && dtos.Any())
+            {
+                string insertQuery = @"
+            INSERT INTO LicenceRule (LicenceId, CategoryId, QuestionCount)
+            VALUES (@licence_id, @category_id, @question_count);
+        ";
+
+                foreach (var rule in dtos)
                 {
-                    new SqlParameter("@licence_id", SqlDbType.Int){ Value = id},
-                    new SqlParameter("@category_id", SqlDbType.Int){ Value = licenceRule.CategoryId},
-                    new SqlParameter("@question_count", SqlDbType.Int){ Value = licenceRule.QuestionCount},
-                };
-                await _sql.ExecuteNonQueryAsync(query, conn, trans, parameters);
+                    if(rule.QuestionCount > 0)
+                    {
+                        var parameters = new[]
+                    {
+                    new SqlParameter("@licence_id", SqlDbType.Int) { Value = id },
+                    new SqlParameter("@category_id", SqlDbType.Int) { Value = rule.CategoryId },
+                    new SqlParameter("@question_count", SqlDbType.Int) { Value = rule.QuestionCount },
+                    };
+                        await _sql.ExecuteNonQueryAsync(insertQuery, conn, trans, parameters);
+                    }
+                }
             }
         }
 
@@ -227,7 +237,8 @@ namespace ApiThiBangLaiXeOto.Controllers
         {
             return rawList
                 .GroupBy(l => l.Id) // Nhóm theo LicenceId
-                .Select(g => new {
+                .Select(g => new
+                {
                     LicenceId = g.Key,
                     LicenceCode = g.First().LicenceCode,
                     QuestionCount = g.First().TotalQuestion,
@@ -236,7 +247,8 @@ namespace ApiThiBangLaiXeOto.Controllers
                     // Gom tất cả các Category và QuestionCount vào một danh sách Rules
                     LicenceRules = g
                         .Where(x => !string.IsNullOrEmpty(x.CategoryName)) // Bỏ qua dòng NULL của Left Join
-                        .Select(r => new {
+                        .Select(r => new
+                        {
                             CategoryId = r.CategoryId,
                             CategoryName = r.CategoryName,
                             QuestionCount = r.QuestionCount

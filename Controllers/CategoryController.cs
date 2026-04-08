@@ -16,10 +16,21 @@ namespace ApiThiBangLaiXeOto.Controllers
             _sql = sql;
         }
         [HttpGet]
-        public async Task<IActionResult> GetAllCategories()
+        public async Task<IActionResult> GetAllCategories([FromQuery] string? PhanLoai)
         {
-            string query = "SELECT Id, Name FROM Category";
-            var categories = await _sql.ExecuteQueryAsync(query, CategoryMapper.ToCategoryDto);            
+            int parameter;
+            if(PhanLoai == "BienBao")
+            {
+                parameter = 2;
+            }
+            else
+            {
+                parameter=1;
+            }
+
+            string query = "SELECT Id, Name FROM Category Where Type = @PhanLoai";
+            var parameters = new[] { new SqlParameter("@PhanLoai", parameter) };
+            var categories = await _sql.ExecuteQueryAsync(query, CategoryMapper.ToCategoryDto, parameters);            
             return Ok(categories);
 
         }
