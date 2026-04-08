@@ -20,8 +20,10 @@ public class Startup
     public void ConfigureServices(IServiceCollection services)
     {
         services.AddControllers();
+        services.AddSignalR();
         services.AddScoped<SqlHelper>();
         services.AddScoped<IQuestionService, QuestionService>();
+        services.AddScoped<ConsultationService>();
         services.AddHttpLogging(options =>
         {
             options.LoggingFields = Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.All;
@@ -48,6 +50,22 @@ public class Startup
                 ),
                 ClockSkew = TimeSpan.Zero
             };
+            // SignalR đọc token
+            options.Events = new JwtBearerEvents
+            {
+                OnMessageReceived = context =>
+                {
+                    var accessToken = context.Request.Query["access_token"];
+
+                    if (!string.IsNullOrEmpty(accessToken) &&
+                        context.HttpContext.Request.Path.StartsWithSegments("/consultationHub"))
+                    {
+                        context.Token = accessToken;
+                    }
+
+                    return Task.CompletedTask;
+                }
+            };
         });
 
         services.AddCors(options =>
@@ -55,7 +73,8 @@ public class Startup
             options.AddPolicy("AllowReactApp",
                 policy => policy.WithOrigins("http://localhost:5173") // Port của Vite
                                 .AllowAnyMethod()
-                                .AllowAnyHeader());
+                                .AllowAnyHeader()
+                                .AllowCredentials());
         });
     }
 
@@ -70,7 +89,7 @@ public class Startup
         app.UseHttpsRedirection();
         app.UseStaticFiles();
         app.UseRouting();
-        
+
         app.UseCors("AllowReactApp");
 
         app.UseAuthentication();
@@ -79,6 +98,8 @@ public class Startup
         app.UseEndpoints(endpoints =>
         {
             endpoints.MapControllers();
+
+            endpoints.MapHub<ApiThiBangLaiXeOto.Hubs.ConsultationHub>("/consultationHub");
         });
     }
 }
