@@ -75,7 +75,7 @@ namespace ApiThiBangLaiXeOto.Controllers
                     }
                 }
             }
-            return NoContent();
+            return Created();
         }
 
         [HttpPut("{id}")]

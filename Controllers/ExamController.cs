@@ -109,59 +109,22 @@ namespace ApiThiBangLaiXeOto.Controllers
         }
 
         [Route("NopBai")]
-        //[Authorize]
+        [Authorize(AuthenticationSchemes = "BearerMain")]
         [HttpPost]
         public async Task<IActionResult> SubmitExam([FromBody] ExamSubmitFormDto submitForm)
         {
+            var user = await authHelper.GetUser(User, _sql);
+            if(user == null)
+            {
+                return Unauthorized(new { Message = "Người dùng không hợp lệ." });
+            }
+
             if (submitForm == null || submitForm.Answers == null || submitForm.Answers.Count == 0)
             {
                 return BadRequest(new { Message = "Dữ liệu gửi lên không hợp lệ." });
             }
 
-            UserExamResultDto? examResult = null;
-
-            try
-            {
-
-                var QuestionAndAnswerIds = submitForm.Answers.Select(a => $"({a.QuestionId}, {a.AnswerId})").ToList();
-                var RawString = String.Join(",", QuestionAndAnswerIds);
-
-                var query = @$"
-                SELECT 
-                    COUNT(*) as TotalQuestion,
-                    COUNT(CASE WHEN a.IsCorrect = 1 THEN 1 END) as TotalCorrect,
-                    MAX(CASE WHEN (a.IsCorrect = 0 OR a.IsCorrect IS NULL) AND q.IsCritical = 1 THEN 1 ELSE 0 END) as HitCritical
-                FROM (VALUES {RawString}) AS UserSubmission(QId, AId)
-                JOIN Question q ON UserSubmission.QId = q.Id
-                LEFT JOIN Answer a ON UserSubmission.AId = a.Id AND a.QuestionId = q.Id
-                ";
-                ExamResultDto? result = await _sql.ExecuteQuerySingleAsync(query, ExamResultMapper.ToExamResultDto);
-
-
-                if (result == null)
-                {
-                    return BadRequest(new { Message = "Không thể tính điểm do dữ liệu không hợp lệ." });
-                }
-                result.TotalQuestion = QuestionAndAnswerIds.Count();
-
-                bool isPassed = result.TotalCorrect >= Math.Ceiling(QuestionAndAnswerIds.Count() * 0.9) && result.HitCritical == 0;
-
-                examResult = new UserExamResultDto
-                {
-                    UserId = 1, // Lấy từ token sau khi có auth
-                    LicenceId = submitForm.LicenceId,
-                    TotalCorrect = result.TotalCorrect,
-                    TotalQuestion = result.TotalQuestion,
-                    HitCritical = result.HitCritical > 0 ? true : false,
-                    IsPassed = isPassed,
-                    CreatedAt = DateTime.UtcNow
-                };
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { Message = "Lỗi hệ thống: " + ex.Message });
-
-            }
+            UserExamResultDto? examResult = await CaculateUserExam(user.Id, submitForm);
 
             if (examResult != null)
             {
@@ -209,6 +172,11 @@ namespace ApiThiBangLaiXeOto.Controllers
                 };
                 var history = await _sql.ExecuteQueryAsync(query, ExamResultMapper.ToExamHistoryDto, parameters, CommandType.StoredProcedure);
 
+                if (history == null || history.Count == 0)
+                {
+                    return NotFound(new { Message = "Không có lịch sử thi." });
+                }
+
                 return Ok(history);
             }
             catch (Exception ex)
@@ -238,6 +206,12 @@ namespace ApiThiBangLaiXeOto.Controllers
                 };
                 var historyDetail = await _sql.ExecuteQueryAsync(query, ExamResultMapper.ToRawExamHistoryDetail, parameters, CommandType.StoredProcedure);
                 var finalHistoryDetail = MergeExamHistoryDetail(historyDetail);
+
+                if (finalHistoryDetail == null || finalHistoryDetail.Count == 0)
+                {
+                    return NotFound(new { Message = "Không tìm thấy chi tiết lịch sử cho bài thi này." });
+                }
+
                 return Ok(finalHistoryDetail);
             }
             catch (Exception ex)
@@ -321,6 +295,57 @@ namespace ApiThiBangLaiXeOto.Controllers
             .ToList();
 
             return mergedList;
+        }
+
+
+        private async Task<UserExamResultDto> CaculateUserExam(int userId, ExamSubmitFormDto submitForm)
+        {
+            try
+            {
+
+                var QuestionAndAnswerIds = submitForm.Answers.Select(a => $"({a.QuestionId}, {a.AnswerId})").ToList();
+                var RawString = String.Join(",", QuestionAndAnswerIds);
+
+                var query = @$"
+                SELECT 
+                    COUNT(*) as TotalQuestion,
+                    COUNT(CASE WHEN a.IsCorrect = 1 THEN 1 END) as TotalCorrect,
+                    MAX(CASE WHEN (a.IsCorrect = 0 OR a.IsCorrect IS NULL) AND q.IsCritical = 1 THEN 1 ELSE 0 END) as HitCritical
+                FROM (VALUES {RawString}) AS UserSubmission(QId, AId)
+                JOIN Question q ON UserSubmission.QId = q.Id
+                LEFT JOIN Answer a ON UserSubmission.AId = a.Id AND a.QuestionId = q.Id
+                ";
+                ExamResultDto? result = await _sql.ExecuteQuerySingleAsync(query, ExamResultMapper.ToExamResultDto);
+
+
+                if (result != null)
+                {
+                    result.TotalQuestion = QuestionAndAnswerIds.Count();
+
+                    bool isPassed = result.TotalCorrect >= Math.Ceiling(QuestionAndAnswerIds.Count() * 0.9) && result.HitCritical == 0;
+
+                    return new UserExamResultDto
+                    {
+                        UserId = userId, // Lấy từ token sau khi có auth
+                        LicenceId = submitForm.LicenceId,
+                        TotalCorrect = result.TotalCorrect,
+                        TotalQuestion = result.TotalQuestion,
+                        HitCritical = result.HitCritical > 0 ? true : false,
+                        IsPassed = isPassed,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                }
+                else
+                {
+                    return null;
+                }
+                
+            }
+            catch (Exception ex)
+            {
+
+                return null;
+            }
         }
     }
 }

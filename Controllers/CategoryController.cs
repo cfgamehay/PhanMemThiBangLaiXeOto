@@ -19,13 +19,13 @@ namespace ApiThiBangLaiXeOto.Controllers
         public async Task<IActionResult> GetAllCategories([FromQuery] string? PhanLoai)
         {
             int parameter;
-            if(PhanLoai == "BienBao")
+            if(PhanLoai == "bienbao")
             {
                 parameter = 2;
             }
             else
             {
-                parameter=1;
+                parameter = 1;
             }
 
             string query = "SELECT Id, Name FROM Category Where Type = @PhanLoai";

@@ -13,7 +13,8 @@ namespace ApiThiBangLaiXeOto.Mapper
                 Name = reader.GetString(reader.GetOrdinal("Name")),
                 ImageUrl = reader.GetString(reader.GetOrdinal("ImageUrl")),
                 Description = reader.GetString(reader.GetOrdinal("Description")),
-                CategoryName = reader.GetString(reader.GetOrdinal("CategoryName"))
+                CategoryName = reader.GetString(reader.GetOrdinal("CategoryName")),
+                CategoryId = reader.GetInt32(reader.GetOrdinal("CategoryId"))
             };
         }
     }

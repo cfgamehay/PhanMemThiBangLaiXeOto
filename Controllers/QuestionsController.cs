@@ -371,7 +371,7 @@ namespace ApiThiBangLaiXeOto.Controllers
             };
 
             await _sql.ExecuteNonQueryAsync(query, parameters);
-            return Ok(id);
+            return NoContent();
         }
 
         private List<QuestionDto> MergeQuestionList(List<QuestionRawDto> rawList)
