@@ -1,6 +1,8 @@
 ﻿using ApiThiBangLaiXeOto.Data;
 using ApiThiBangLaiXeOto.DTOs;
+using ApiThiBangLaiXeOto.Middleware;
 using ApiThiBangLaiXeOto.Utils;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -37,8 +39,10 @@ namespace ApiThiBangLaiXeOto.Controllers
 
             }
         }
-        [HttpPost]
+        [Authorize(AuthenticationSchemes = "BearerMain")]
+        [AdminOnly]
         [Route("Json")]
+        [HttpPost]
         public async Task<IActionResult> CreateTrafficSign([FromBody] List<TrafficSignCreateDto> dtos)
         {
             foreach (TrafficSignCreateDto dto in dtos)
@@ -71,8 +75,10 @@ namespace ApiThiBangLaiXeOto.Controllers
             return Created();
         }
         //create traffic sign with image file
-        [HttpPost]
+        [Authorize(AuthenticationSchemes = "BearerMain")]
+        [AdminOnly]
         [Route("Form")]
+        [HttpPost]
         public async Task<IActionResult> CreateTrafficSign([FromForm] TrafficSignCreateDto dto)
         {
             if (!ModelState.IsValid)
@@ -123,7 +129,8 @@ namespace ApiThiBangLaiXeOto.Controllers
 
         }
 
-
+        [Authorize(AuthenticationSchemes = "BearerMain")]
+        [AdminOnly]
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTrafficSign(int id)
         {
@@ -214,6 +221,8 @@ namespace ApiThiBangLaiXeOto.Controllers
         //            }
         //        }
 
+        [Authorize(AuthenticationSchemes = "BearerMain")]
+        [AdminOnly]
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateTrafficSign([FromForm] TrafficSignUpdateDto dto, int id)
         {

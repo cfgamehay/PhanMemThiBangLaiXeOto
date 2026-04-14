@@ -1,7 +1,7 @@
 ﻿using ApiThiBangLaiXeOto.Data;
 using ApiThiBangLaiXeOto.DTOs;
-using ApiThiBangLaiXeOto.Helper;
 using ApiThiBangLaiXeOto.Mapper;
+using ApiThiBangLaiXeOto.Middleware;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -47,7 +47,8 @@ namespace ApiThiBangLaiXeOto.Controllers
         }
 
 
-
+        [Authorize(AuthenticationSchemes = "BearerMain")]
+        [AdminOnly]
         [HttpPost]
         public async Task<IActionResult> CreateLicence([FromBody] LicenceCreateDto dto)
         {
@@ -77,7 +78,8 @@ namespace ApiThiBangLaiXeOto.Controllers
             }
             return Created();
         }
-
+        [Authorize(AuthenticationSchemes = "BearerMain")]
+        [AdminOnly]
         [HttpPut("{id}")]
         public async Task<IActionResult> Update([FromBody] LicenceCreateDto dto, int id)
         {
@@ -107,7 +109,8 @@ namespace ApiThiBangLaiXeOto.Controllers
             }
             return NoContent();
         }
-
+        [Authorize(AuthenticationSchemes = "BearerMain")]
+        [AdminOnly]
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteLicence(int id)
         {

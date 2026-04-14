@@ -34,5 +34,7 @@ namespace ApiThiBangLaiXeOto.Controllers
             return Ok(categories);
 
         }
+
+        //Them Xoa sua
     }
 }

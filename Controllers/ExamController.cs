@@ -152,7 +152,7 @@ namespace ApiThiBangLaiXeOto.Controllers
 
             return BadRequest(new { Message = "Không thể lưu kết quả do dữ liệu không hợp lệ." });
         }
-        [Authorize]
+        [Authorize(AuthenticationSchemes = "BearerMain")]
         [HttpGet("LichSu")]
         public async Task<IActionResult> GetExamHistory()
         {
@@ -185,7 +185,7 @@ namespace ApiThiBangLaiXeOto.Controllers
             }
         }
 
-        [Authorize]
+        [Authorize(AuthenticationSchemes = "BearerMain")]
         [HttpGet("LichSu/{id}")]
         public async Task<IActionResult> GetExamDetailHistory(int id)
         {

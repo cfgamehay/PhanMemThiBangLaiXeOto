@@ -3,6 +3,7 @@ using ApiThiBangLaiXeOto.DTOs;
 using ApiThiBangLaiXeOto.Helper;
 using ApiThiBangLaiXeOto.Interface;
 using ApiThiBangLaiXeOto.Mapper;
+using ApiThiBangLaiXeOto.Middleware;
 using ApiThiBangLaiXeOto.Service;
 using ApiThiBangLaiXeOto.Utils;
 using Microsoft.AspNetCore.Authorization;
@@ -234,6 +235,7 @@ namespace ApiThiBangLaiXeOto.Controllers
             }
         }
         [Authorize(AuthenticationSchemes = "BearerMain")]
+        [AdminOnly]
         [HttpPost("json")]
         //Get List of QuestionCreateDTO from json response
         public async Task<IActionResult> Create([FromBody] List<QuestionCreateDTO> dtos)
@@ -282,6 +284,7 @@ namespace ApiThiBangLaiXeOto.Controllers
         }
 
         [Authorize(AuthenticationSchemes = "BearerMain")]
+        [AdminOnly]
         [HttpPost("form")]
         public async Task<IActionResult> CreateFromForm([FromForm] QuestionCreateDTO dto)
         {
@@ -331,6 +334,7 @@ namespace ApiThiBangLaiXeOto.Controllers
             return Created();
         }
         [Authorize(AuthenticationSchemes = "BearerMain")]
+        [AdminOnly]
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateQuestion(int id, [FromForm] QuestionUpdateDto dto)
         {
@@ -357,6 +361,7 @@ namespace ApiThiBangLaiXeOto.Controllers
             return NoContent();
         }
         [Authorize(AuthenticationSchemes = "BearerMain")]
+        [AdminOnly]
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteQuestion(int id)
         {
