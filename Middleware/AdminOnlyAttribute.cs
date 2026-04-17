@@ -11,18 +11,21 @@
         {
             var user = context.HttpContext.User;
 
-            // chưa đăng nhập
             if (user?.Identity == null || !user.Identity.IsAuthenticated)
             {
                 context.Result = new UnauthorizedResult();
                 return;
             }
 
-            // lấy role từ claim
-            var role = user.FindFirst(ClaimTypes.Role)?.Value;
+            // Lấy role từ claim
+            var roleClaim = user.FindFirst(ClaimTypes.Role)?.Value;
 
-            // không phải admin
-            if (role != "1")
+            // Kiểm tra: Nếu không phải "1" VÀ cũng không phải "ADMIN" thì mới cấm
+            // Lưu ý: Dùng Equals kèm StringComparison để tránh lỗi viết hoa/thường
+            bool isAdmin = roleClaim == "1" ||
+                           (roleClaim != null && roleClaim.Equals("ADMIN", StringComparison.OrdinalIgnoreCase));
+
+            if (!isAdmin)
             {
                 context.Result = new ForbidResult();
             }

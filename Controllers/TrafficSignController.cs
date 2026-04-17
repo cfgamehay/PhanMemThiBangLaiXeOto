@@ -1,5 +1,6 @@
 ﻿using ApiThiBangLaiXeOto.Data;
 using ApiThiBangLaiXeOto.DTOs;
+using ApiThiBangLaiXeOto.Helper;
 using ApiThiBangLaiXeOto.Middleware;
 using ApiThiBangLaiXeOto.Utils;
 using Microsoft.AspNetCore.Authorization;
@@ -134,6 +135,8 @@ namespace ApiThiBangLaiXeOto.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTrafficSign(int id)
         {
+            var userid =  authHelper.GetUser(User, _sql).Id;
+
             string getImageQuery = "SELECT ImageUrl FROM TrafficSign WHERE Id = @Id";
             string oldFileName = string.Empty;
 
