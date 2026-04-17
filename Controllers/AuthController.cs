@@ -72,6 +72,49 @@ namespace ApiThiBangLaiXeOto.Controllers
             });
 
         }
+        [HttpPost("adminlogin")]
+        public async Task<IActionResult> AdminLoginAsync([FromBody] LoginDTO dto)
+        {
+            // 1. Lấy hash từ DB
+            var passwordHash = await _sql.GetHashPasswordAsync(dto.Username);
+            if (string.IsNullOrEmpty(passwordHash))
+                return Unauthorized(new { message = "Invalid login" });
+
+            // 2. Verify password (PasswordHasher phải dùng PBKDF2/BCrypt/Argon2)
+            if (!PasswordHasher.VerifyPassword(dto.Password, passwordHash))
+                return Unauthorized(new { message = "Invalid login" });
+
+            // 3. Lấy user (sau khi đã verify)
+            var user = await _sql.GetUserAsync(null, dto.Username);
+            if (user == null)
+                return Unauthorized(new { message = "Invalid login" });
+            // kiểm tra Status
+            if (!user.Status)
+            {
+                return Unauthorized(new
+                {
+                    code = "DISABLE",
+                });
+            }
+            // lấy role từ claim
+            var role = user.Role;
+
+            // không phải admin
+            if (role != 1)
+            {
+                return Unauthorized(new { message = "Only Admin login" });
+            }
+            // 4. Tạo token (lưu ý: user.Authorize nên là tên role nếu dùng Role-based authorization)
+            var token = GenerateJwtToken(user.Id, user.Role);
+            return Ok(new
+            {
+                accessToken = token,
+                role = user.Role,
+                name = user.UserName,
+                userId = user.Id,
+            });
+
+        }
         [Authorize(AuthenticationSchemes = "BearerMain")]
         [HttpPost("logout")]
         public IActionResult Logout()
