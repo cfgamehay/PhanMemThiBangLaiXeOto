@@ -100,6 +100,10 @@ public class Startup
             endpoints.MapControllers();
 
             endpoints.MapHub<ApiThiBangLaiXeOto.Hubs.ConsultationHub>("/consultationHub");
+            endpoints.MapGet("/health", async context =>
+            {
+                await context.Response.WriteAsync("OK");
+            });
         });
     }
 }
