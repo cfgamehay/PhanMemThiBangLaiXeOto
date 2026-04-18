@@ -100,6 +100,19 @@ public class Startup
             endpoints.MapControllers();
 
             endpoints.MapHub<ApiThiBangLaiXeOto.Hubs.ConsultationHub>("/consultationHub");
+            endpoints.MapGet("/", async context =>
+            {
+                context.Response.ContentType = "application/json";
+
+                await context.Response.WriteAsync(
+                    System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        status = "running",
+                        service = "ApiThiBangLaiXeOto",
+                        time = DateTime.UtcNow
+                    })
+                );
+            });
         });
     }
 }
