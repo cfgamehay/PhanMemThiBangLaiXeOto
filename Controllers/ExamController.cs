@@ -137,7 +137,7 @@ namespace ApiThiBangLaiXeOto.Controllers
                         {
                             int ExamResultId = await InsertExamResult(examResult, connection, trans);
                             await InsertExamResultDetail(ExamResultId, submitForm.Answers, connection, trans);
-
+                            await UpdateLearningPathFromExam(user.Id, submitForm.Answers, connection, trans);
                             trans.Commit();
                             return Ok();
                         }
@@ -271,6 +271,36 @@ namespace ApiThiBangLaiXeOto.Controllers
             var valueList = answers.Select(a => $"({ExamResultId}, {a.QuestionId}, {a.AnswerId})").ToList();
             var bulkQuery = $"INSERT INTO ExamDetail (ExamId, QuestionId, AnswerId) VALUES {string.Join(",", valueList)}";
             await _sql.ExecuteNonQueryAsync(bulkQuery, connection, transaction);
+        }
+
+        private async Task UpdateLearningPathFromExam(int userId, List<ExamAnswerSubmitDto> answers, SqlConnection connection, SqlTransaction transaction)
+        {
+            foreach (var item in answers)
+            {
+                // Câu truy vấn kiểm tra xem AnswerId gửi lên có phải là đáp án đúng của QuestionId đó không
+                // Giả sử bảng Answer của bạn có cột IsCorrect (bit)
+                var checkQuery = @"SELECT CASE WHEN EXISTS (
+                                SELECT 1 FROM Answer 
+                                WHERE Id = @AnswerId AND QuestionId = @QuestionId AND IsCorrect = 1
+                            ) THEN 1 ELSE 0 END";
+
+                var isCorrectObj = await _sql.ExecuteScalarAsync<int>(checkQuery, connection, transaction, new SqlParameter[] {
+            new SqlParameter("@AnswerId", item.AnswerId),
+            new SqlParameter("@QuestionId", item.QuestionId)
+        }, CommandType.Text);
+
+                bool isCorrect = (isCorrectObj == 1);
+
+                // Gọi SP lưu tiến độ học tập (sp_SaveUserLearningProgress)
+                var parameters = new SqlParameter[]
+                {
+            new SqlParameter("@UserId", userId),
+            new SqlParameter("@QuestionId", item.QuestionId),
+            new SqlParameter("@IsCorrect", isCorrect)
+                };
+
+                await _sql.ExecuteNonQueryAsync("sp_SaveUserLearningProgress", connection, transaction, parameters, CommandType.StoredProcedure);
+            }
         }
 
         private List<ExamHistoryDetailDto> MergeExamHistoryDetail(List<RawExamHistoryDetailDto> rawList)

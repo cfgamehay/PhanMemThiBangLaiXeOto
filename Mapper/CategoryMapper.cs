@@ -1,17 +1,16 @@
 ﻿using ApiThiBangLaiXeOto.DTOs;
 using Microsoft.Data.SqlClient;
 
-namespace ApiThiBangLaiXeOto.Mapper
+namespace ApiThiBangLaiXeOto.Mapper;
+
+public class CategoryMapper
 {
-    public class CategoryMapper
+    public static CategoryDto ToCategoryDto(SqlDataReader reader)
     {
-        public static CategoryDto ToCategoryDto(SqlDataReader reader)
+        return new CategoryDto
         {
-            return new CategoryDto
-            {
-                CategoryId = reader.GetInt32(reader.GetOrdinal("Id")),
-                CategoryName = reader.GetString(reader.GetOrdinal("Name"))
-            };
-        }
+            CategoryId = reader.GetInt32(reader.GetOrdinal("Id")),
+            CategoryName = reader.GetString(reader.GetOrdinal("Name"))
+        };
     }
 }

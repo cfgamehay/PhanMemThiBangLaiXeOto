@@ -1,6 +1,7 @@
 ﻿using ApiThiBangLaiXeOto.Data;
 using ApiThiBangLaiXeOto.DTOs;
 using ApiThiBangLaiXeOto.Helper;
+using ApiThiBangLaiXeOto.Mapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -46,7 +47,8 @@ namespace ApiThiBangLaiXeOto.Controllers
                 await _sql.ExecuteNonQueryAsync(query, parameters, CommandType.StoredProcedure);
 
                 return Ok();
-            } catch (Exception ex)
+            }
+            catch (Exception ex)
             {
                 return StatusCode(500, $"Lỗi khi lưu kết quả học tập: {ex.Message}");
             }
@@ -85,6 +87,34 @@ namespace ApiThiBangLaiXeOto.Controllers
                 return StatusCode(500, $"Lỗi khi lưu kết quả học tập: {ex.Message}");
             }
 
+        }
+        [HttpGet]
+        [Route("CauHoiSaiThuongXuyen")]
+        public async Task<IActionResult> GetFrequentlyWrongQuestions([FromQuery] int limit = 10)
+        {
+            var user = await authHelper.GetUser(User, _sql);
+
+            if (user == null)
+            {
+                return Unauthorized();
+            }
+
+            var result = new List<WrongQuestionsDto>();
+
+            var parameters = new SqlParameter[]
+            {
+                new SqlParameter("@UserId", user.Id),
+                new SqlParameter("@Limit", limit)
+            };
+
+            var query = "sp_GetWrongQuestionsPath";
+
+            var wrongQuestions = await _sql.ExecuteQueryAsync(query, WrongQuestionMapper.ToWrongQuestionsDto, parameters, CommandType.StoredProcedure);
+
+            if (wrongQuestions != null) { 
+                return Ok(wrongQuestions);
+            }
+            return NotFound("Không tìm thấy câu hỏi sai thường xuyên nào.");
         }
     }
 
