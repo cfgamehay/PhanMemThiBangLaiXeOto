@@ -71,7 +71,9 @@ public class Startup
         services.AddCors(options =>
         {
             options.AddPolicy("AllowReactApp",
-                policy => policy.WithOrigins("http://localhost:5173") // Port của Vite
+                policy => policy.WithOrigins(
+                                    "http://localhost:3000",
+                                    "http://localhost:5173") // Port của Vite
                                 .AllowAnyMethod()
                                 .AllowAnyHeader()
                                 .AllowCredentials());
