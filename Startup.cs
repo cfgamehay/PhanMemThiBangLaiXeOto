@@ -70,11 +70,14 @@ public class Startup
 
         services.AddCors(options =>
         {
-            options.AddPolicy("AllowReactApp",
-                policy => policy.WithOrigins("http://localhost:5173") // Port của Vite
-                                .AllowAnyMethod()
-                                .AllowAnyHeader()
-                                .AllowCredentials());
+            options.AddPolicy("AllowAll", builder =>
+            {
+                builder
+                    .SetIsOriginAllowed(_ => true)
+                    .AllowAnyMethod()
+                    .AllowAnyHeader()
+                    .AllowCredentials();
+            });
         });
     }
 
@@ -90,7 +93,7 @@ public class Startup
         app.UseStaticFiles();
         app.UseRouting();
 
-        app.UseCors("AllowReactApp");
+        app.UseCors("AllowAll");
 
         app.UseAuthentication();
         app.UseAuthorization();
