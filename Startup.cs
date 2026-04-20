@@ -74,8 +74,8 @@ public class Startup
             {
                 builder
                     .SetIsOriginAllowed(_ => true)
-                    .AllowAnyMethod()
                     .AllowAnyHeader()
+                    .AllowAnyMethod()
                     .AllowCredentials();
             });
         });
@@ -88,6 +88,8 @@ public class Startup
         {
             app.UseDeveloperExceptionPage();
         }
+
+        
 
         app.UseHttpsRedirection();
         app.UseStaticFiles();
